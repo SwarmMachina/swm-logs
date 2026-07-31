@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+benchmark/profiles/
+benchmark/**/*.js
+benchmark/**/*.d.ts
+benchmark/**/*.map
+*.log
+.DS_Store

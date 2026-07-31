@@ -1,0 +1,9 @@
+node_modules/
+coverage/
+benchmark/profiles/
+*.log
+pnpm-lock.yaml
+dist/
+benchmark/**/*.js
+benchmark/**/*.d.ts
+benchmark/**/*.map

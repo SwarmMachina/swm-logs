@@ -1,0 +1,8 @@
+{
+  "extends": "@swarmmachina/standards/tsconfig",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"]
+}

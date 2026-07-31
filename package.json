@@ -1,0 +1,81 @@
+{
+  "name": "@swarmmachina/swm-log",
+  "version": "0.1.0",
+  "description": "Zero-dependency structured JSON logger for Node.js",
+  "keywords": [
+    "logger",
+    "logging",
+    "json",
+    "ndjson",
+    "pino-compatible",
+    "zero-dependency",
+    "swarmmachina"
+  ],
+  "author": "SwarmMachina Team",
+  "license": "MPL-2.0",
+  "packageManager": "pnpm@11.15.1",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "engines": {
+    "node": "22.x || 24.x"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SwarmMachina/swm-log.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node scripts/clean-dist.js && tsc --project tsconfig.build.json",
+    "build:benchmark": "node scripts/clean-benchmark-generated.js && tsc --project tsconfig.benchmark.json",
+    "check": "prettier . --check && eslint . && tsc --project tsconfig.json && tsc --project tsconfig.test.json",
+    "fix": "eslint . --fix && prettier . --write",
+    "test": "pnpm build && pnpm test:unit",
+    "test:unit": "node --experimental-strip-types --test tests/unit/*.test.ts",
+    "test:coverage": "node --experimental-strip-types --test --experimental-test-coverage tests/unit/*.test.ts",
+    "test:e2e": "pnpm build && node --experimental-strip-types --test tests/e2e/*.test.ts",
+    "test:leak": "node --experimental-strip-types --expose-gc --test tests/leak/*.leak.test.ts",
+    "test:readme": "node --experimental-strip-types --test tests/e2e/readme.test.ts",
+    "test:types": "node scripts/test-packed-types.js",
+    "test:package": "node scripts/test-package.js",
+    "bench": "pnpm build && pnpm build:benchmark && node benchmark/bench.js --scenario all --runs 3 --warmup 1",
+    "bench:b1": "pnpm build && pnpm build:benchmark && node benchmark/bench.js --scenario b1 --runs 3 --warmup 1",
+    "bench:b2": "pnpm build && pnpm build:benchmark && node benchmark/bench.js --scenario b2 --runs 3 --warmup 1",
+    "bench:b3": "pnpm build && pnpm build:benchmark && node benchmark/bench.js --scenario b3 --runs 3 --warmup 1",
+    "bench:b4": "pnpm build && pnpm build:benchmark && node benchmark/bench.js --scenario b4 --runs 3 --warmup 1",
+    "bench:b5": "pnpm build && pnpm build:benchmark && node benchmark/bench.js --scenario b5 --runs 3 --warmup 1",
+    "bench:b6": "pnpm build && pnpm build:benchmark && node benchmark/bench.js --scenario b6 --runs 3 --warmup 1",
+    "bench:b7": "pnpm build && pnpm build:benchmark && node benchmark/bench.js --scenario b7 --runs 3 --warmup 1",
+    "profile:ci": "pnpm build && pnpm build:benchmark && node benchmark/profile-ci.js",
+    "profile:compare": "pnpm build && pnpm build:benchmark && node benchmark/profile-compare.js",
+    "profile:extensions": "pnpm build && pnpm build:benchmark && node benchmark/profile-extensions.js",
+    "release:verify-tag": "node scripts/verify-release.js",
+    "release:gate": "pnpm build && pnpm check && pnpm test:unit && node --experimental-strip-types --test tests/e2e/*.test.ts && pnpm test:leak && pnpm test:types && pnpm test:package",
+    "prepublishOnly": "pnpm release:gate"
+  },
+  "devDependencies": {
+    "@swarmmachina/benchkit": "^0.2.0",
+    "@swarmmachina/standards": "^3.0.0",
+    "@types/node": "24.10.1",
+    "eslint": "10.7.0",
+    "pino": "^10.1.0",
+    "prettier": "3.9.6",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.65.0"
+  }
+}

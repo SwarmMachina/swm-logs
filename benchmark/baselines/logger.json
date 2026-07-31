@@ -1,0 +1,121 @@
+{
+  "schemaVersion": "regression-ci-baseline/v1",
+  "suite": "logger",
+  "benchmark": {
+    "name": "swm-log-core-ci",
+    "packageName": "@swarmmachina/swm-log",
+    "packageVersion": "0.1.0",
+    "runner": "benchmark/profile-ci.ts",
+    "script": "pnpm profile:ci",
+    "framework": "swm-log"
+  },
+  "calibration": {
+    "status": "local-calibrated",
+    "updatedAt": "2026-07-30",
+    "node": "24.17.0",
+    "benchkit": "0.2.0",
+    "ciRunner": "macOS arm64 local development host",
+    "note": "Calibrated from isolated local series. Throughput floors and p99, RSS, and sampled-allocation ceilings include observed jitter. Recalibrate these host-specific bounds before enabling a different dedicated CI runner."
+  },
+  "parameters": {
+    "runs": 3,
+    "warmup": 1,
+    "connections": 1,
+    "pipelining": 1,
+    "duration": "operation-bound",
+    "destination": "/dev/null",
+    "allocationSamplingIntervalBytes": 32768
+  },
+  "metrics": {
+    "operationsPerSecond": { "label": "throughput", "unit": "ops/s" },
+    "p99Ms": { "label": "p99", "unit": "ms" },
+    "rssPeakMiB": { "label": "RSS peak", "unit": "MiB" },
+    "allocationBytesPerOperation": { "label": "sampled allocation", "unit": "B/op" }
+  },
+  "tests": {
+    "b1": {
+      "observedMedian": {
+        "operationsPerSecond": 1285500,
+        "p99Ms": 0.001681,
+        "rssPeakMiB": 68.95,
+        "allocationBytesPerOperation": 742.25
+      },
+      "guards": {
+        "operationsPerSecond": { "min": 985472 },
+        "p99Ms": { "max": 0.002664 },
+        "rssPeakMiB": { "max": 84 },
+        "allocationBytesPerOperation": { "max": 890 }
+      }
+    },
+    "b2": {
+      "observedMedian": {
+        "operationsPerSecond": 1013434,
+        "p99Ms": 0.002049,
+        "rssPeakMiB": 69.08,
+        "allocationBytesPerOperation": 1472.94
+      },
+      "guards": {
+        "operationsPerSecond": { "min": 751473 },
+        "p99Ms": { "max": 0.004546 },
+        "rssPeakMiB": { "max": 83 },
+        "allocationBytesPerOperation": { "max": 1873 }
+      }
+    },
+    "b3": {
+      "observedMedian": {
+        "operationsPerSecond": 847006,
+        "p99Ms": 0.002449,
+        "rssPeakMiB": 80.73,
+        "allocationBytesPerOperation": 1974.37
+      },
+      "guards": {
+        "operationsPerSecond": { "min": 663281 },
+        "p99Ms": { "max": 0.004458 },
+        "rssPeakMiB": { "max": 97 },
+        "allocationBytesPerOperation": { "max": 2543 }
+      }
+    },
+    "b4": {
+      "observedMedian": {
+        "operationsPerSecond": 408637,
+        "p99Ms": 0.004263,
+        "rssPeakMiB": 69.84,
+        "allocationBytesPerOperation": 4658.16
+      },
+      "guards": {
+        "operationsPerSecond": { "min": 288232 },
+        "p99Ms": { "max": 0.013511 },
+        "rssPeakMiB": { "max": 84 },
+        "allocationBytesPerOperation": { "max": 5007 }
+      }
+    },
+    "b5": {
+      "observedMedian": {
+        "operationsPerSecond": 2761709,
+        "p99Ms": 0.001379,
+        "rssPeakMiB": 136.55,
+        "allocationBytesPerOperation": 1071.34
+      },
+      "guards": {
+        "operationsPerSecond": { "min": 1748286 },
+        "p99Ms": { "max": 0.002717 },
+        "rssPeakMiB": { "max": 164 },
+        "allocationBytesPerOperation": { "max": 1301 }
+      }
+    },
+    "b7": {
+      "observedMedian": {
+        "operationsPerSecond": 669070,
+        "p99Ms": 0.003231,
+        "rssPeakMiB": 79.8,
+        "allocationBytesPerOperation": 3227.05
+      },
+      "guards": {
+        "operationsPerSecond": { "min": 500000 },
+        "p99Ms": { "max": 0.006 },
+        "rssPeakMiB": { "max": 96 },
+        "allocationBytesPerOperation": { "max": 4100 }
+      }
+    }
+  }
+}
