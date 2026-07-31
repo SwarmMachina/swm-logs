@@ -36,6 +36,60 @@ interface InternalOptions {
 
 const INTERNAL_STATE: unique symbol = Symbol('LoggerState')
 
+function parseBindingsPrefix(prefix: string): LogFields {
+  return prefix.length === 0 ? {} : (JSON.parse(`{${prefix.slice(1)}}`) as LogFields)
+}
+
+function errorMessage(value: unknown): string {
+  try {
+    if (value instanceof Error) {
+      return value.message
+    }
+
+    return String(value)
+  } catch {
+    return 'unknown logger failure'
+  }
+}
+
+function normalizeClock(configuredClock: (() => number) | undefined): () => number {
+  const clock = configuredClock ?? Date.now
+
+  if (typeof clock !== 'function') {
+    throw new TypeError('options.time must be a function returning epoch milliseconds')
+  }
+
+  return clock
+}
+
+function assertRecord(value: unknown, label: string): asserts value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError(`${label} must be an object`)
+  }
+}
+
+function normalizeBindings(value: LogFields | undefined, label: string): LogFields {
+  if (value === undefined) {
+    return {}
+  }
+
+  assertRecord(value, label)
+
+  return value
+}
+
+function positiveInteger(value: number | undefined, fallback: number, label: string): number {
+  if (value === undefined) {
+    return fallback
+  }
+
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new TypeError(`${label} must be a positive integer`)
+  }
+
+  return value
+}
+
 /**
  * A zero-dependency structured NDJSON logger.
  *
@@ -73,6 +127,7 @@ export class Logger<const TCustomLevels extends CustomLevels = Record<never, nev
     assertRecord(options as unknown, 'options')
 
     this.#levelRegistry = new LevelRegistry(options.customLevels)
+
     const errorCauseDepth = positiveInteger(options.errorCauseDepth, DEFAULT_ERROR_CAUSE_DEPTH, 'errorCauseDepth')
     const depthLimit = positiveInteger(options.depthLimit, DEFAULT_DEPTH_LIMIT, 'depthLimit')
     const edgeLimit = positiveInteger(options.edgeLimit, DEFAULT_EDGE_LIMIT, 'edgeLimit')
@@ -88,6 +143,7 @@ export class Logger<const TCustomLevels extends CustomLevels = Record<never, nev
     this.#clock = normalizeClock(options.time)
     this.#bindingValues = normalizeBindings(options.bindings, 'options.bindings')
     this.#bindingsPrefix = this.#serializeBindings(this.#bindingValues, 'bindings')
+
     const extensionsEnabled = options.formatter !== undefined || options.hooks !== undefined
 
     this.#bindingSnapshot = extensionsEnabled ? parseBindingsPrefix(this.#bindingsPrefix) : null
@@ -100,6 +156,7 @@ export class Logger<const TCustomLevels extends CustomLevels = Record<never, nev
           hooks: options.hooks
         })
       : null
+
     const selected = this.#levelRegistry.resolve(options.level ?? 'info', 'options.level')
 
     this.#threshold = selected.value
@@ -324,58 +381,4 @@ export class Logger<const TCustomLevels extends CustomLevels = Record<never, nev
 
     this.#output.write(line, level)
   }
-}
-
-function parseBindingsPrefix(prefix: string): LogFields {
-  return prefix.length === 0 ? {} : (JSON.parse(`{${prefix.slice(1)}}`) as LogFields)
-}
-
-function errorMessage(value: unknown): string {
-  try {
-    if (value instanceof Error) {
-      return value.message
-    }
-
-    return String(value)
-  } catch {
-    return 'unknown logger failure'
-  }
-}
-
-function normalizeClock(configuredClock: (() => number) | undefined): () => number {
-  const clock = configuredClock ?? Date.now
-
-  if (typeof clock !== 'function') {
-    throw new TypeError('options.time must be a function returning epoch milliseconds')
-  }
-
-  return clock
-}
-
-function assertRecord(value: unknown, label: string): asserts value is Record<string, unknown> {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    throw new TypeError(`${label} must be an object`)
-  }
-}
-
-function normalizeBindings(value: LogFields | undefined, label: string): LogFields {
-  if (value === undefined) {
-    return {}
-  }
-
-  assertRecord(value, label)
-
-  return value
-}
-
-function positiveInteger(value: number | undefined, fallback: number, label: string): number {
-  if (value === undefined) {
-    return fallback
-  }
-
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new TypeError(`${label} must be a positive integer`)
-  }
-
-  return value
 }
