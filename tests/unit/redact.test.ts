@@ -117,6 +117,44 @@ test('rich redact supports computed censor and key removal', () => {
   assert.deepEqual(removedDestination.records()[0].auth, { user: 'Ada' })
 })
 
+test('a computed single-path censor keeps wildcard paths in extension records', () => {
+  const destination = new MemoryDestination()
+  const logger = new Logger({
+    destination,
+    hooks: { beforeFormat() {} },
+    redact: {
+      censor: (value, path) => `${path.join('/')}:${String(value).length}`,
+      paths: ['users[*].token']
+    },
+    time: () => 1
+  })
+  const fields = { users: [{ token: 'one' }, { token: 'two' }] }
+
+  logger.info(fields)
+
+  assert.deepEqual(destination.records()[0].users, [{ token: 'users/0/token:3' }, { token: 'users/1/token:3' }])
+  assert.deepEqual(fields, { users: [{ token: 'one' }, { token: 'two' }] })
+})
+
+test('single-path redaction preserves own __proto__ properties without prototype pollution', () => {
+  const destination = new MemoryDestination()
+  const logger = new Logger({
+    destination,
+    hooks: { beforeFormat() {} },
+    redact: ['payload.__proto__.secret'],
+    time: () => 1
+  })
+  const fields = JSON.parse('{"payload":{"__proto__":{"secret":"hide","retained":true}}}')
+
+  logger.info(fields)
+
+  const payload = destination.records()[0].payload as Record<string, unknown>
+
+  assert.equal(Object.hasOwn(payload, '__proto__'), true)
+  assert.deepEqual(payload.__proto__, { retained: true, secret: '[Redacted]' })
+  assert.equal(({} as Record<string, unknown>).secret, undefined)
+})
+
 test('redaction happens before selected toJSON methods can observe values', () => {
   const destination = new MemoryDestination()
   const logger = new Logger({ destination, redact: ['payload.secret'], time: () => 1 })

@@ -1,24 +1,11 @@
 import type { RedactCensor, RedactOptions } from '../types.js'
-import { quoteString } from './quote-string.js'
+import { assignOwnValue, hasOwn } from './own-property.js'
+import { RedactNode } from './redact-node.js'
 import { parseRedactPath, type PathSegment } from './redact-path.js'
-import { REDACT_STRINGIFY_FALLBACK, safeStringifyRedacted, type RedactedStringifyConfig } from './redacted-stringify.js'
-import { safeStringify, type SafeStringifyOptions } from './safe-stringify.js'
+import { REDACT_NOT_APPLICABLE, SinglePathRedactor } from './single-path-redactor.js'
+import type { SafeStringifyOptions } from './safe-stringify.js'
 
-/** Signals that a field does not belong to the compiled single-path fast path. */
-export const REDACT_NOT_APPLICABLE = Symbol('redact-not-applicable')
-
-type RedactValue = (value: unknown) => unknown
-type SerializeField = (
-  key: string,
-  value: unknown,
-  options: SafeStringifyOptions
-) => string | undefined | typeof REDACT_NOT_APPLICABLE
-
-interface RedactNode {
-  terminal: boolean
-  children: Map<string, RedactNode>
-  wildcard: RedactNode | null
-}
+export { REDACT_NOT_APPLICABLE } from './single-path-redactor.js'
 
 interface RedactResult {
   changed: boolean
@@ -31,14 +18,6 @@ interface RedactPolicy {
   remove: boolean
 }
 
-const hasOwn = Function.call.bind(Object.prototype.hasOwnProperty) as (value: object, property: PropertyKey) => boolean
-const REMOVE = Symbol('remove-redacted-value')
-const UNCHANGED = Symbol('unchanged-redacted-value')
-
-type BranchResult = unknown | typeof REMOVE | typeof UNCHANGED
-type StaticBranchRedactor = (value: unknown) => BranchResult
-type DynamicBranchRedactor = (value: unknown, path: string[]) => BranchResult
-
 /**
  * Owns compiled exact/wildcard redaction behavior.
  *
@@ -46,40 +25,46 @@ type DynamicBranchRedactor = (value: unknown, path: string[]) => BranchResult
  * trie. Neither strategy mutates caller-owned values.
  */
 export class Redactor {
-  readonly #redactValue: RedactValue
-  readonly #serializeField: SerializeField | null
+  readonly #policy: RedactPolicy
+  readonly #root: RedactNode | null
+  readonly #singlePath: SinglePathRedactor | null
 
   /** Parses and compiles configuration once, outside the logging hot path. */
   constructor(config: readonly string[] | RedactOptions) {
     const { paths, policy } = normalizeConfig(config)
     const parsedPaths = paths.map(parseRedactPath)
 
-    if (parsedPaths.length === 1) {
-      const segments = parsedPaths[0]!
+    this.#policy = policy
 
-      this.#redactValue = compileSinglePathRedactor(segments, policy)
-      this.#serializeField = compileFieldSerializer(this.#redactValue, segments, policy)
+    if (parsedPaths.length === 1) {
+      this.#root = null
+      this.#singlePath = new SinglePathRedactor({ ...policy, segments: parsedPaths[0]! })
 
       return
     }
 
-    const root = compileTrie(parsedPaths)
-
-    this.#redactValue =
-      root.children.size === 0 && root.wildcard === null
-        ? (value) => value
-        : (value) => redactBranch(value, root, policy, []).value
-    this.#serializeField = null
+    this.#root = compileTrie(parsedPaths)
+    this.#singlePath = null
   }
 
   /** Returns whether fields can be redacted during JSON serialization. */
   get supportsFusedSerialization(): boolean {
-    return this.#serializeField !== null
+    return this.#singlePath !== null
   }
 
   /** Redacts a value immutably. */
   redact(value: unknown): unknown {
-    return this.#redactValue(value)
+    if (this.#singlePath !== null) {
+      return this.#singlePath.redact(value)
+    }
+
+    const root = this.#root!
+
+    if (root.children.size === 0 && root.wildcard === null) {
+      return value
+    }
+
+    return redactBranch(value, root, this.#policy, []).value
   }
 
   /** Serializes one top-level field through the fused single-path strategy. */
@@ -88,12 +73,12 @@ export class Redactor {
     value: unknown,
     options: SafeStringifyOptions
   ): string | undefined | typeof REDACT_NOT_APPLICABLE {
-    return this.#serializeField === null ? REDACT_NOT_APPLICABLE : this.#serializeField(key, value, options)
+    return this.#singlePath === null ? REDACT_NOT_APPLICABLE : this.#singlePath.serializeField(key, value, options)
   }
 }
 
 function compileTrie(paths: readonly (readonly PathSegment[])[]): RedactNode {
-  const root = makeNode()
+  const root = new RedactNode()
 
   for (const segments of paths) {
     let node = root
@@ -104,13 +89,13 @@ function compileTrie(paths: readonly (readonly PathSegment[])[]): RedactNode {
       }
 
       if (segment.wildcard) {
-        node.wildcard ??= makeNode()
+        node.wildcard ??= new RedactNode()
         node = node.wildcard
       } else {
         let child = node.children.get(segment.key)
 
         if (child === undefined) {
-          child = makeNode()
+          child = new RedactNode()
           node.children.set(segment.key, child)
         }
 
@@ -124,217 +109,6 @@ function compileTrie(paths: readonly (readonly PathSegment[])[]): RedactNode {
   }
 
   return root
-}
-
-function compileSinglePathRedactor(segments: readonly PathSegment[], policy: RedactPolicy): RedactValue {
-  if (typeof policy.censor === 'function' && !policy.remove) {
-    return compileDynamicSinglePathRedactor(segments, policy.censor)
-  }
-
-  let branch: StaticBranchRedactor = policy.remove ? () => REMOVE : () => policy.censor
-
-  for (let index = segments.length - 1; index >= 0; index -= 1) {
-    const segment = segments[index]!
-
-    branch = segment.wildcard ? wrapStaticWildcard(branch) : wrapStaticExact(segment.key, branch)
-  }
-
-  return (value) => {
-    const redacted = branch(value)
-
-    return redacted === UNCHANGED || redacted === REMOVE ? value : redacted
-  }
-}
-
-function compileFieldSerializer(
-  redactValue: RedactValue,
-  segments: readonly PathSegment[],
-  policy: RedactPolicy
-): SerializeField {
-  const config: RedactedStringifyConfig = {
-    ...policy,
-    segments,
-    staticCensorJson: !policy.remove && typeof policy.censor === 'string' ? quoteString(policy.censor) : null
-  }
-  const first = config.segments[0]!
-  const dynamicPath = typeof config.censor === 'function' && !config.remove
-
-  return (key, value, options) => {
-    if (!first.wildcard && first.key !== key) {
-      return REDACT_NOT_APPLICABLE
-    }
-
-    const serialized = safeStringifyRedacted(value, options, config, 1, dynamicPath ? [key] : null)
-
-    if (serialized !== REDACT_STRINGIFY_FALLBACK) {
-      return serialized
-    }
-
-    const wrapper = { [key]: value }
-    const redacted = redactValue(wrapper) as Record<string, unknown>
-
-    return hasOwn(redacted, key) ? safeStringify(redacted[key], options) : undefined
-  }
-}
-
-function wrapStaticExact(key: string, next: StaticBranchRedactor): StaticBranchRedactor {
-  return (value) => {
-    if (value === null || typeof value !== 'object' || !hasOwn(value, key)) {
-      return UNCHANGED
-    }
-
-    const record = value as Record<string, unknown>
-    const nested = next(record[key])
-
-    if (nested === UNCHANGED) {
-      return UNCHANGED
-    }
-
-    const clone = cloneContainer(record)
-
-    if (nested === REMOVE) {
-      delete (clone as Record<string, unknown>)[key]
-    } else {
-      defineValue(clone, key, nested)
-    }
-
-    return clone
-  }
-}
-
-function wrapStaticWildcard(next: StaticBranchRedactor): StaticBranchRedactor {
-  return (value) => {
-    if (value === null || typeof value !== 'object') {
-      return UNCHANGED
-    }
-
-    if (Array.isArray(value)) {
-      let clone: unknown[] | undefined
-
-      for (let index = 0; index < value.length; index += 1) {
-        if (!hasOwn(value, index)) {
-          continue
-        }
-
-        const nested = next(value[index])
-
-        if (nested !== UNCHANGED) {
-          clone ??= [...value]
-
-          if (nested === REMOVE) {
-            delete clone[index]
-          } else {
-            clone[index] = nested
-          }
-        }
-      }
-
-      return clone ?? UNCHANGED
-    }
-
-    const record = value as Record<string, unknown>
-
-    let clone: Record<string, unknown> | undefined
-
-    for (const key of Object.keys(record)) {
-      const nested = next(record[key])
-
-      if (nested !== UNCHANGED) {
-        clone ??= { ...record }
-
-        if (nested === REMOVE) {
-          delete clone[key]
-        } else {
-          defineValue(clone, key, nested)
-        }
-      }
-    }
-
-    return clone ?? UNCHANGED
-  }
-}
-
-function compileDynamicSinglePathRedactor(segments: readonly PathSegment[], censor: RedactCensor): RedactValue {
-  let branch: DynamicBranchRedactor = (value, path) => censor(value, [...path])
-
-  for (let index = segments.length - 1; index >= 0; index -= 1) {
-    const segment = segments[index]!
-
-    branch = segment.wildcard ? wrapDynamicWildcard(branch) : wrapDynamicExact(segment.key, branch)
-  }
-
-  return (value) => {
-    const redacted = branch(value, [])
-
-    return redacted === UNCHANGED || redacted === REMOVE ? value : redacted
-  }
-}
-
-function wrapDynamicExact(key: string, next: DynamicBranchRedactor): DynamicBranchRedactor {
-  return (value, path) => {
-    if (value === null || typeof value !== 'object' || !hasOwn(value, key)) {
-      return UNCHANGED
-    }
-
-    const record = value as Record<string, unknown>
-
-    path.push(key)
-
-    try {
-      const nested = next(record[key], path)
-
-      if (nested === UNCHANGED) {
-        return UNCHANGED
-      }
-
-      const clone = cloneContainer(record)
-
-      if (nested === REMOVE) {
-        delete (clone as Record<string, unknown>)[key]
-      } else {
-        defineValue(clone, key, nested)
-      }
-
-      return clone
-    } finally {
-      path.pop()
-    }
-  }
-}
-
-function wrapDynamicWildcard(next: DynamicBranchRedactor): DynamicBranchRedactor {
-  return (value, path) => {
-    if (value === null || typeof value !== 'object') {
-      return UNCHANGED
-    }
-
-    const record = value as Record<string, unknown>
-    const keys = Object.keys(record)
-
-    let clone: Record<string, unknown> | unknown[] | undefined
-
-    for (const key of keys) {
-      path.push(key)
-
-      try {
-        const nested = next(record[key], path)
-
-        if (nested !== UNCHANGED) {
-          clone ??= cloneContainer(record)
-
-          if (nested === REMOVE) {
-            delete (clone as Record<string, unknown>)[key]
-          } else {
-            defineValue(clone, key, nested)
-          }
-        }
-      } finally {
-        path.pop()
-      }
-    }
-
-    return clone ?? UNCHANGED
-  }
 }
 
 function normalizeConfig(config: readonly string[] | RedactOptions): {
@@ -367,10 +141,6 @@ function normalizeConfig(config: readonly string[] | RedactOptions): {
     paths: options.paths,
     policy: { censor: options.censor ?? '[Redacted]', remove: options.remove ?? false }
   }
-}
-
-function makeNode(): RedactNode {
-  return { terminal: false, children: new Map(), wildcard: null }
 }
 
 function redactBranch(
@@ -411,7 +181,7 @@ function redactBranch(
       if (nested.removed) {
         delete (clone as Record<string, unknown>)[key]
       } else {
-        defineValue(clone, key, nested.value)
+        assignOwnValue(clone, key, nested.value)
       }
     }
   }
@@ -515,19 +285,4 @@ function matchingChildren(nodes: readonly RedactNode[], key: string): RedactNode
 
 function cloneContainer(value: Record<string, unknown>): Record<string, unknown> | unknown[] {
   return Array.isArray(value) ? [...value] : { ...value }
-}
-
-function defineValue(target: object, key: string, value: unknown): void {
-  if (key === '__proto__') {
-    Object.defineProperty(target, key, {
-      configurable: true,
-      enumerable: true,
-      value,
-      writable: true
-    })
-  } else {
-    const record = target as Record<string, unknown>
-
-    record[key] = value
-  }
 }

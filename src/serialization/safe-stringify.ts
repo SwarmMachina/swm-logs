@@ -1,4 +1,5 @@
 import { DEFAULT_DEPTH_LIMIT, DEFAULT_EDGE_LIMIT } from '../constants.js'
+import { assignOwnValue } from './own-property.js'
 import { quoteString } from './quote-string.js'
 
 /** Bounds applied while converting nested values into JSON-safe values. */
@@ -253,7 +254,7 @@ function normalizeErrorValue(
         const value = normalizeJsonValue(custom[key], key, depth + 1, depthLimit, edgeLimit, ancestors)
 
         if (value !== OMIT) {
-          defineJsonProperty(output, key, value)
+          assignOwnValue(output, key, value)
         }
       }
 
@@ -272,19 +273,6 @@ function normalizeErrorValue(
 
 function isReservedErrorKey(key: string): boolean {
   return key === 'name' || key === 'message' || key === 'stack' || key === 'cause'
-}
-
-function defineJsonProperty(target: Record<string, unknown>, key: string, value: unknown): void {
-  if (key === '__proto__') {
-    Object.defineProperty(target, key, {
-      configurable: true,
-      enumerable: true,
-      value,
-      writable: true
-    })
-  } else {
-    target[key] = value
-  }
 }
 
 function normalizeJsonValue(

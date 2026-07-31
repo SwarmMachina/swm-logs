@@ -1,4 +1,5 @@
 import type { LogSerializers, RedactOptions } from '../types.js'
+import { assignOwnValue, hasOwn } from './own-property.js'
 import { quoteString } from './quote-string.js'
 import { REDACT_NOT_APPLICABLE, Redactor } from './redact.js'
 import { normalizeError, safeStringify, safeStringifyError, type SafeStringifyOptions } from './safe-stringify.js'
@@ -19,8 +20,6 @@ interface CompiledFieldSerializerOptions {
   serializers: LogSerializers | null
 }
 
-const hasOwn = Function.call.bind(Object.prototype.hasOwnProperty) as (value: object, property: PropertyKey) => boolean
-
 /** Owns the immutable configuration for top-level field serialization. */
 export class FieldSerializer {
   readonly #options: CompiledFieldSerializerOptions
@@ -38,20 +37,31 @@ export class FieldSerializer {
   /** Serializes own fields as comma-prefixed JSON members. */
   serialize(fields: Record<string, unknown>): string {
     const options = this.#options
-
-    if (
+    const useFusedRedaction =
       options.serializers === null &&
       options.redactor?.supportsFusedSerialization === true &&
       !(fields.err instanceof Error)
-    ) {
-      return serializeFieldsWithRedaction(fields, options)
+    const source = useFusedRedaction
+      ? fields
+      : ((options.redactor === null ? fields : options.redactor.redact(fields)) as Record<string, unknown>)
+
+    let output = ''
+
+    for (const key of Object.keys(source)) {
+      if (isReservedLogKey(key)) {
+        continue
+      }
+
+      const value = source[key]
+      const redacted = useFusedRedaction ? options.redactor!.serializeField(key, value, options) : REDACT_NOT_APPLICABLE
+      const serialized = redacted === REDACT_NOT_APPLICABLE ? serializeField(key, value, options) : redacted
+
+      if (serialized !== undefined) {
+        output += `,${quoteString(key)}:${serialized}`
+      }
     }
 
-    const source = (options.redactor === null ? fields : options.redactor.redact(fields)) as Record<string, unknown>
-
-    return options.serializers === null
-      ? serializeFields(source, options)
-      : serializeFieldsWithSerializers(source, options)
+    return output
   }
 
   /** Redacts and serializes own fields into a logger-owned extension record. */
@@ -72,84 +82,19 @@ export class FieldSerializer {
             ? normalizeError(value, options.errorCauseDepth, options)
             : value
 
-      defineField(target, key, prepared)
+      assignOwnValue(target, key, prepared)
     }
   }
 }
 
-function serializeFieldsWithRedaction(
-  source: Record<string, unknown>,
-  options: CompiledFieldSerializerOptions
-): string {
-  const redactor = options.redactor!
-
-  let output = ''
-
-  for (const key of Object.keys(source)) {
-    if (isReservedLogKey(key)) {
-      continue
-    }
-
-    const value = source[key]
-    const redacted = redactor.serializeField(key, value, options)
-    const serialized = redacted === REDACT_NOT_APPLICABLE ? serializeValue(value, options) : redacted
-
-    if (serialized !== undefined) {
-      output += `,${quoteString(key)}:${serialized}`
-    }
+function serializeField(key: string, value: unknown, options: CompiledFieldSerializerOptions): string | undefined {
+  if (options.serializers !== null && hasOwn(options.serializers, key)) {
+    return serializeValue(options.serializers[key]!(value), options)
   }
 
-  return output
-}
-
-function serializeFields(source: Record<string, unknown>, options: CompiledFieldSerializerOptions): string {
-  let output = ''
-
-  for (const key of Object.keys(source)) {
-    if (isReservedLogKey(key)) {
-      continue
-    }
-
-    const value = source[key]
-    const serialized =
-      key === 'err' && value instanceof Error
-        ? safeStringifyError(value, options.errorCauseDepth, options)
-        : serializeValue(value, options)
-
-    if (serialized !== undefined) {
-      output += `,${quoteString(key)}:${serialized}`
-    }
-  }
-
-  return output
-}
-
-function serializeFieldsWithSerializers(
-  source: Record<string, unknown>,
-  options: CompiledFieldSerializerOptions
-): string {
-  const serializers = options.serializers!
-
-  let output = ''
-
-  for (const key of Object.keys(source)) {
-    if (isReservedLogKey(key)) {
-      continue
-    }
-
-    const value = source[key]
-    const serialized = hasOwn(serializers, key)
-      ? serializeValue(serializers[key]!(value), options)
-      : key === 'err' && value instanceof Error
-        ? safeStringifyError(value, options.errorCauseDepth, options)
-        : serializeValue(value, options)
-
-    if (serialized !== undefined) {
-      output += `,${quoteString(key)}:${serialized}`
-    }
-  }
-
-  return output
+  return key === 'err' && value instanceof Error
+    ? safeStringifyError(value, options.errorCauseDepth, options)
+    : serializeValue(value, options)
 }
 
 function compileSerializers(serializers: LogSerializers | undefined): LogSerializers | null {
@@ -180,19 +125,6 @@ function compileSerializers(serializers: LogSerializers | undefined): LogSeriali
 
 function isReservedLogKey(key: string): boolean {
   return key === 'level' || key === 'time' || key === 'msg'
-}
-
-function defineField(target: Record<string, unknown>, key: string, value: unknown): void {
-  if (key === '__proto__') {
-    Object.defineProperty(target, key, {
-      configurable: true,
-      enumerable: true,
-      value,
-      writable: true
-    })
-  } else {
-    target[key] = value
-  }
 }
 
 /** Returns one JSON value, or `undefined` when JSON omits it. */

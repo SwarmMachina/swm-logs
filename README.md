@@ -142,7 +142,7 @@ const logger = new Logger({
 logger.info({ account: { id: 7, accessToken: 'secret' } }, 'signed in')
 ```
 
-A single redact path is compiled into a closure chain and fused with bounded JSON serialization, so the default output path neither mutates nor clones caller data. Multiple and overlapping paths use the general branch-trie fallback, which clones only matched containers. Dot notation, quoted/numeric bracket notation, `*`, and `[*]` are supported. Rich configuration adds a static/function `censor` or `remove: true`.
+A single redact path uses a dedicated redactor and is fused with bounded JSON serialization, so the default output path neither mutates nor clones caller data. Multiple and overlapping paths use the general branch-trie fallback, which clones only matched containers. Dot notation, quoted/numeric bracket notation, `*`, and `[*]` are supported. Rich configuration adds a static/function `censor` or `remove: true`.
 
 <!-- example:test redact -->
 
