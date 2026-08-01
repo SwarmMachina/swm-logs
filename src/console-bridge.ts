@@ -1,5 +1,6 @@
 import type { Logger } from './logger.js'
 import type { CustomLevels, LogArguments } from './types.js'
+import { isFunction, isObject } from './validation.js'
 
 type ConsoleMethod = 'trace' | 'debug' | 'log' | 'info' | 'warn' | 'error'
 type LoggerMethod = Exclude<ConsoleMethod, 'log'>
@@ -16,7 +17,7 @@ const METHOD_LEVELS = [
 ] as const satisfies readonly (readonly [ConsoleMethod, LoggerMethod])[]
 
 /** Owns an opt-in console patch and the exact methods needed to restore it. */
-export class ConsoleBridge {
+class ConsoleBridge {
   readonly #console: ConsoleLike
   #installed = false
   readonly #logger: Logger<CustomLevels>
@@ -27,12 +28,12 @@ export class ConsoleBridge {
    * @throws {TypeError} If `logger` does not expose the required level methods.
    */
   constructor(logger: Logger<CustomLevels>, targetConsole: Console = console) {
-    if (logger === null || typeof logger !== 'object') {
+    if (!isObject(logger)) {
       throw new TypeError('ConsoleBridge logger must be a Logger-compatible object')
     }
 
     for (const [, level] of METHOD_LEVELS) {
-      if (typeof logger[level] !== 'function') {
+      if (!isFunction(logger[level])) {
         throw new TypeError(`ConsoleBridge logger is missing ${level}()`)
       }
     }
@@ -75,3 +76,5 @@ export class ConsoleBridge {
     this.#installed = false
   }
 }
+
+export { ConsoleBridge }

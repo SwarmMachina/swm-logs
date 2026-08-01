@@ -15,6 +15,7 @@ import type {
   LoggerOptions,
   LogRecord
 } from './types.js'
+import { assertRecord, isFunction, positiveInteger } from './validation.js'
 
 interface LoggerState {
   bindingValues: LogFields
@@ -53,19 +54,15 @@ function errorMessage(value: unknown): string {
 }
 
 function normalizeClock(configuredClock: (() => number) | undefined): () => number {
-  const clock = configuredClock ?? Date.now
+  if (configuredClock === undefined) {
+    return Date.now
+  }
 
-  if (typeof clock !== 'function') {
+  if (!isFunction(configuredClock)) {
     throw new TypeError('options.time must be a function returning epoch milliseconds')
   }
 
-  return clock
-}
-
-function assertRecord(value: unknown, label: string): asserts value is Record<string, unknown> {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    throw new TypeError(`${label} must be an object`)
-  }
+  return configuredClock
 }
 
 function normalizeBindings(value: LogFields | undefined, label: string): LogFields {
@@ -78,18 +75,6 @@ function normalizeBindings(value: LogFields | undefined, label: string): LogFiel
   return value
 }
 
-function positiveInteger(value: number | undefined, fallback: number, label: string): number {
-  if (value === undefined) {
-    return fallback
-  }
-
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new TypeError(`${label} must be a positive integer`)
-  }
-
-  return value
-}
-
 /**
  * A zero-dependency structured NDJSON logger.
  *
@@ -98,7 +83,7 @@ function positiveInteger(value: number | undefined, fallback: number, label: str
  * and child configuration throw `TypeError` synchronously.
  * @template TCustomLevels - Compile-time map for configured custom levels.
  */
-export class Logger<const TCustomLevels extends CustomLevels = Record<never, never>> {
+class Logger<const TCustomLevels extends CustomLevels = Record<never, never>> {
   #bindingValues!: LogFields
   #bindingSnapshot!: LogFields | null
   #bindingsPrefix!: string
@@ -382,3 +367,5 @@ export class Logger<const TCustomLevels extends CustomLevels = Record<never, nev
     this.#output.write(line, level)
   }
 }
+
+export { Logger }

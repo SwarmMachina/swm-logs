@@ -252,5 +252,6 @@ test('serializer failures are contained and invalid limits fail at construction'
   assert.throws(() => new Logger({ depthLimit: 0 }), /depthLimit/)
   assert.throws(() => new Logger({ edgeLimit: 1.5 }), /edgeLimit/)
   assert.throws(() => new Logger({ serializers: { msg: () => 'reserved' } }), /reserved/)
+  assert.throws(() => new Logger(invalidOptions({ serializers: [] })), /object of functions/)
   assert.throws(() => new Logger(invalidOptions({ serializers: { value: true } })), /must be a function/)
 })

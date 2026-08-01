@@ -1,41 +1,10 @@
 import { safeStringify, type SafeStringifyOptions } from './serialization/safe-stringify.js'
 import type { LogArguments, LogFields } from './types.js'
+import { isObject, isRecord } from './validation.js'
 
 interface ParsedLogArguments {
   fields: LogFields | null
   message: string | undefined
-}
-
-/** Separates structured fields from the formatted message. */
-export function parseLogArguments(args: LogArguments, stringifyOptions: SafeStringifyOptions): ParsedLogArguments {
-  if (args.length === 0) {
-    return { fields: null, message: undefined }
-  }
-
-  const first = args[0]
-
-  if (first instanceof Error) {
-    return {
-      fields: { err: first },
-      message: args.length > 1 ? formatMessage(args, 1, stringifyOptions) : String(first.message)
-    }
-  }
-
-  if (first !== null && typeof first === 'object' && !Array.isArray(first)) {
-    const fields = first as LogFields
-
-    let message: string | undefined
-
-    if (args.length > 1) {
-      message = formatMessage(args, 1, stringifyOptions)
-    } else if (Object.hasOwn(fields, 'msg') && fields.msg !== undefined) {
-      message = String(fields.msg)
-    }
-
-    return { fields, message }
-  }
-
-  return { fields: null, message: formatMessage(args, 0, stringifyOptions) }
 }
 
 function formatMessage(
@@ -107,7 +76,7 @@ function messageValue(value: unknown, stringifyOptions: SafeStringifyOptions): s
     return value.stack || value.message
   }
 
-  if (value !== null && typeof value === 'object') {
+  if (isObject(value)) {
     return messageJson(value, stringifyOptions)
   }
 
@@ -117,3 +86,37 @@ function messageValue(value: unknown, stringifyOptions: SafeStringifyOptions): s
 function messageJson(value: unknown, stringifyOptions: SafeStringifyOptions): string {
   return safeStringify(value, stringifyOptions) ?? String(value)
 }
+
+/** Separates structured fields from the formatted message. */
+function parseLogArguments(args: LogArguments, stringifyOptions: SafeStringifyOptions): ParsedLogArguments {
+  if (args.length === 0) {
+    return { fields: null, message: undefined }
+  }
+
+  const first = args[0]
+
+  if (first instanceof Error) {
+    return {
+      fields: { err: first },
+      message: args.length > 1 ? formatMessage(args, 1, stringifyOptions) : String(first.message)
+    }
+  }
+
+  if (isRecord(first)) {
+    const fields: LogFields = first
+
+    let message: string | undefined
+
+    if (args.length > 1) {
+      message = formatMessage(args, 1, stringifyOptions)
+    } else if (Object.hasOwn(fields, 'msg') && fields.msg !== undefined) {
+      message = String(fields.msg)
+    }
+
+    return { fields, message }
+  }
+
+  return { fields: null, message: formatMessage(args, 0, stringifyOptions) }
+}
+
+export { parseLogArguments }

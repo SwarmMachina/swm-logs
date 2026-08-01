@@ -1,11 +1,12 @@
 import { writeSync } from 'node:fs'
 
 import type { LogDestination } from '../types.js'
+import { asNonNegativeInteger, isFunction, isNonNegativeInteger, isObject } from '../validation.js'
 
 type DestinationOption = 'stdout' | 'stderr' | number | LogDestination | undefined
 
 /** Owns and normalizes the configured stdout, stderr, descriptor, or writer. */
-export class OutputDestination {
+class OutputDestination {
   readonly #fd: number | undefined
   readonly #target: LogDestination | null
 
@@ -16,28 +17,28 @@ export class OutputDestination {
   constructor(target: DestinationOption) {
     if (target === undefined || target === 'stdout') {
       this.#target = process.stdout
-      this.#fd = numericFd(process.stdout.fd)
+      this.#fd = asNonNegativeInteger(process.stdout.fd)
 
       return
     }
 
     if (target === 'stderr') {
       this.#target = process.stderr
-      this.#fd = numericFd(process.stderr.fd)
+      this.#fd = asNonNegativeInteger(process.stderr.fd)
 
       return
     }
 
-    if (Number.isInteger(target) && Number(target) >= 0) {
-      this.#fd = target as number
+    if (isNonNegativeInteger(target)) {
+      this.#fd = target
       this.#target = null
 
       return
     }
 
-    if (target !== null && typeof target === 'object' && typeof target.write === 'function') {
+    if (isObject(target) && isFunction(target.write)) {
       this.#target = target
-      this.#fd = numericFd(target.fd)
+      this.#fd = asNonNegativeInteger(target.fd)
 
       return
     }
@@ -84,6 +85,4 @@ export class OutputDestination {
   }
 }
 
-function numericFd(value: unknown): number | undefined {
-  return Number.isInteger(value) && Number(value) >= 0 ? (value as number) : undefined
-}
+export { OutputDestination }

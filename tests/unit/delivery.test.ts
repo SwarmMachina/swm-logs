@@ -3,6 +3,14 @@ import { test } from 'node:test'
 
 import Logger, { type DestinationErrorEvent } from '../../dist/index.js'
 
+function invalidHandler(handler: unknown): (event: DestinationErrorEvent) => void {
+  return handler as (event: DestinationErrorEvent) => void
+}
+
+test('destination error handlers are validated during construction', () => {
+  assert.throws(() => new Logger({ onDestinationError: invalidHandler({}) }), /onDestinationError must be a function/)
+})
+
 test('destination failures expose counters and a contained notification', () => {
   const events: DestinationErrorEvent[] = []
   const logger = new Logger({

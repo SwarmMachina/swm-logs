@@ -222,6 +222,7 @@ test('one synchronous transport failure does not block later transports', () => 
 test('extension configuration is validated once during construction', () => {
   assert.throws(() => new Logger(invalidOptions({ formatter: 'pretty' })), /formatter/)
   assert.throws(() => new Logger(invalidOptions({ hooks: null })), /hooks/)
+  assert.throws(() => new Logger(invalidOptions({ hooks: [] })), /hooks must be an object/)
   assert.throws(() => new Logger(invalidOptions({ hooks: { beforeFormat: [null] } })), /beforeFormat/)
   assert.throws(() => new Logger(invalidOptions({ transports: {} })), /transports must be an array/)
   assert.throws(() => new Logger(invalidOptions({ transports: [{}] })), /transports\[0\]/)

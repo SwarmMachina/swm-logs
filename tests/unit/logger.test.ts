@@ -133,7 +133,12 @@ test('configuration errors are explicit TypeErrors', () => {
   assert.throws(() => new Logger({ level: 'unknown' }), TypeError)
   assert.throws(() => new Logger({ customLevels: { info: 35 } }), /collides with a built-in level/)
   assert.throws(() => new Logger(invalidOptions({ customLevels: [] })), /customLevels must be an object/)
+  assert.throws(
+    () => new Logger(invalidOptions({ customLevels: { notice: Number.MAX_SAFE_INTEGER + 1 } })),
+    /non-negative safe integer/
+  )
   assert.throws(() => new Logger({ buffering: { maxBytes: 0 } }), /positive integer/)
+  assert.throws(() => new Logger(invalidOptions({ time: null })), /time must be a function/)
   assert.throws(() => new Logger(invalidOptions({ console: 'no' })), /console must be a boolean/)
   assert.throws(() => new Logger({ console: false }), /requires at least one transport/)
   assert.throws(
@@ -142,5 +147,6 @@ test('configuration errors are explicit TypeErrors', () => {
   )
   assert.throws(() => new Logger({ console: false, buffering: true, transports: [{ write() {} }] }), /buffering/)
   assert.throws(() => new Logger(invalidOptions({ destination: {} })), /destination/)
+  assert.throws(() => new Logger(invalidOptions({ destination: Number.MAX_SAFE_INTEGER + 1 })), /destination/)
   assert.throws(() => new Logger(invalidOptions({ bindings: [] })), /must be an object/)
 })

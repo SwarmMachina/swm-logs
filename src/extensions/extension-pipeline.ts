@@ -1,4 +1,5 @@
 import type { AfterFormatHook, BeforeFormatHook, LogFields, LogFormatter, LoggerHooks, LogRecord } from '../types.js'
+import { assertFunction, assertRecord, isFunction, isRecord } from '../validation.js'
 import { FieldSerializer } from '../serialization/field-serializer.js'
 import { quoteString } from '../serialization/quote-string.js'
 
@@ -12,8 +13,28 @@ interface ExtensionPipelineOptions {
 
 const EMPTY_HOOKS: readonly never[] = Object.freeze([])
 
+function normalizeHooks<THook>(value: THook | readonly THook[] | undefined, label: string): readonly THook[] {
+  if (value === undefined) {
+    return EMPTY_HOOKS
+  }
+
+  const hooks = Array.isArray(value) ? [...value] : [value]
+
+  if (hooks.some((hook) => !isFunction(hook))) {
+    throw new TypeError(`options.${label} must be a function or an array of functions`)
+  }
+
+  return Object.freeze(hooks) as readonly THook[]
+}
+
+function assertFields(value: unknown): asserts value is LogFields {
+  if (!isRecord(value)) {
+    throw new TypeError('record.fields must remain an object')
+  }
+}
+
 /** Owns the immutable, opt-in hook and formatting pipeline. */
-export class ExtensionPipeline {
+class ExtensionPipeline {
   readonly #afterFormat: readonly AfterFormatHook[]
   readonly #beforeFormat: readonly BeforeFormatHook[]
   readonly #fieldSerializer: FieldSerializer
@@ -21,12 +42,12 @@ export class ExtensionPipeline {
 
   /** Compiles and validates extension callbacks once, outside the hot path. */
   constructor(options: ExtensionPipelineOptions) {
-    if (options.hooks !== undefined && (options.hooks === null || typeof options.hooks !== 'object')) {
-      throw new TypeError('options.hooks must be an object')
+    if (options.hooks !== undefined) {
+      assertRecord(options.hooks, 'options.hooks')
     }
 
-    if (options.formatter !== undefined && typeof options.formatter !== 'function') {
-      throw new TypeError('options.formatter must be a function')
+    if (options.formatter !== undefined) {
+      assertFunction(options.formatter, 'options.formatter')
     }
 
     this.#beforeFormat = normalizeHooks(options.hooks?.beforeFormat, 'hooks.beforeFormat')
@@ -86,22 +107,4 @@ export class ExtensionPipeline {
   }
 }
 
-function normalizeHooks<THook>(value: THook | readonly THook[] | undefined, label: string): readonly THook[] {
-  if (value === undefined) {
-    return EMPTY_HOOKS
-  }
-
-  const hooks = Array.isArray(value) ? [...value] : [value]
-
-  if (hooks.some((hook) => typeof hook !== 'function')) {
-    throw new TypeError(`options.${label} must be a function or an array of functions`)
-  }
-
-  return Object.freeze(hooks) as readonly THook[]
-}
-
-function assertFields(value: unknown): asserts value is LogFields {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    throw new TypeError('record.fields must remain an object')
-  }
-}
+export { ExtensionPipeline }

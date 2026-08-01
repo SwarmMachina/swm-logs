@@ -1,14 +1,54 @@
 import { DEFAULT_BUFFER_BYTES, DEFAULT_FLUSH_INTERVAL } from '../constants.js'
 import type { BufferingOptions, DeliveryStats, LoggerOptions, LogTransport } from '../types.js'
 import type { LevelRegistry } from '../level-registry.js'
+import { assertRecord, isFunction, isRecord, nonNegativeInteger, positiveInteger } from '../validation.js'
 import { BufferedWriter } from './buffered-writer.js'
 import { DeliveryMonitor } from './delivery-monitor.js'
 import { OutputDestination } from './output-destination.js'
 
 type OutputOptions = Pick<LoggerOptions, 'buffering' | 'console' | 'destination' | 'onDestinationError' | 'transports'>
 
+function normalizeTransports(transports: readonly LogTransport[] | undefined): readonly LogTransport[] {
+  if (transports === undefined) {
+    return []
+  }
+
+  if (!Array.isArray(transports)) {
+    throw new TypeError('options.transports must be an array')
+  }
+
+  for (const [index, transport] of transports.entries()) {
+    if (!isRecord(transport) || !isFunction(transport.write)) {
+      throw new TypeError(`options.transports[${index}] must be an object with write(line, level)`)
+    }
+  }
+
+  return transports
+}
+
+function normalizeBuffering(
+  buffering: LoggerOptions['buffering'],
+  levels: LevelRegistry
+): { flushInterval: number; flushLevel: number; maxBytes: number } | null {
+  if (buffering === undefined || buffering === false) {
+    return null
+  }
+
+  if (buffering !== true) {
+    assertRecord(buffering, 'options.buffering')
+  }
+
+  const source: BufferingOptions = buffering === true ? {} : buffering
+
+  return {
+    flushInterval: nonNegativeInteger(source.flushInterval, DEFAULT_FLUSH_INTERVAL, 'buffering.flushInterval'),
+    flushLevel: levels.resolve(source.flushLevel ?? 'warn', 'buffering.flushLevel').value,
+    maxBytes: positiveInteger(source.maxBytes, DEFAULT_BUFFER_BYTES, 'buffering.maxBytes')
+  }
+}
+
 /** Owns the configured output graph, its lifecycle, and shared delivery counters. */
-export class OutputPipeline {
+class OutputPipeline {
   readonly #immediateDestination: OutputDestination | null
   readonly #monitor: DeliveryMonitor
   readonly #outputs: readonly (BufferedWriter | LogTransport)[]
@@ -106,7 +146,7 @@ export class OutputPipeline {
   }
 
   #callFlushSync(target: BufferedWriter | LogTransport): void {
-    if (typeof target.flushSync !== 'function') {
+    if (!isFunction(target.flushSync)) {
       return
     }
 
@@ -118,7 +158,7 @@ export class OutputPipeline {
   }
 
   #collectFlush(target: BufferedWriter | LogTransport, pending: Promise<void>[]): void {
-    if (typeof target.flush !== 'function') {
+    if (!isFunction(target.flush)) {
       return
     }
 
@@ -130,8 +170,8 @@ export class OutputPipeline {
   }
 
   #collectClose(target: BufferedWriter | LogTransport, pending: Promise<void>[]): void {
-    if (typeof target.close !== 'function') {
-      if (typeof target.flush === 'function') {
+    if (!isFunction(target.close)) {
+      if (isFunction(target.flush)) {
         this.#collectFlush(target, pending)
       } else {
         this.#callFlushSync(target)
@@ -148,7 +188,7 @@ export class OutputPipeline {
   }
 
   #collectPromise(result: void | Promise<void>, operation: 'flush' | 'close', pending: Promise<void>[]): void {
-    if (result === undefined || typeof (result as Promise<void>).then !== 'function') {
+    if (result === undefined || !isFunction((result as Promise<void>).then)) {
       return
     }
 
@@ -160,71 +200,4 @@ export class OutputPipeline {
   }
 }
 
-function normalizeTransports(transports: readonly LogTransport[] | undefined): readonly LogTransport[] {
-  if (transports === undefined) {
-    return []
-  }
-
-  if (!Array.isArray(transports)) {
-    throw new TypeError('options.transports must be an array')
-  }
-
-  for (const [index, transport] of transports.entries()) {
-    if (transport === null || typeof transport !== 'object' || typeof transport.write !== 'function') {
-      throw new TypeError(`options.transports[${index}] must be an object with write(line, level)`)
-    }
-  }
-
-  return transports
-}
-
-function normalizeBuffering(
-  buffering: LoggerOptions['buffering'],
-  levels: LevelRegistry
-): { flushInterval: number; flushLevel: number; maxBytes: number } | null {
-  if (buffering === undefined || buffering === false) {
-    return null
-  }
-
-  if (buffering !== true) {
-    assertRecord(buffering, 'options.buffering')
-  }
-
-  const source: BufferingOptions = buffering === true ? {} : buffering
-
-  return {
-    flushInterval: nonNegativeInteger(source.flushInterval, DEFAULT_FLUSH_INTERVAL, 'buffering.flushInterval'),
-    flushLevel: levels.resolve(source.flushLevel ?? 'warn', 'buffering.flushLevel').value,
-    maxBytes: positiveInteger(source.maxBytes, DEFAULT_BUFFER_BYTES, 'buffering.maxBytes')
-  }
-}
-
-function assertRecord(value: unknown, label: string): asserts value is Record<string, unknown> {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    throw new TypeError(`${label} must be an object`)
-  }
-}
-
-function positiveInteger(value: number | undefined, fallback: number, label: string): number {
-  if (value === undefined) {
-    return fallback
-  }
-
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new TypeError(`${label} must be a positive integer`)
-  }
-
-  return value
-}
-
-function nonNegativeInteger(value: number | undefined, fallback: number, label: string): number {
-  if (value === undefined) {
-    return fallback
-  }
-
-  if (!Number.isSafeInteger(value) || value < 0) {
-    throw new TypeError(`${label} must be a non-negative integer`)
-  }
-
-  return value
-}
+export { OutputPipeline }

@@ -1,4 +1,5 @@
 import type { LogSerializers, RedactOptions } from '../types.js'
+import { isFunction, isRecord } from '../validation.js'
 import { assignOwnValue, hasOwn } from './own-property.js'
 import { quoteString } from './quote-string.js'
 import { REDACT_NOT_APPLICABLE, Redactor } from './redact.js'
@@ -20,8 +21,70 @@ interface CompiledFieldSerializerOptions {
   serializers: LogSerializers | null
 }
 
+/** Returns one JSON value, or `undefined` when JSON omits it. */
+function serializeValue(value: unknown, options: SafeStringifyOptions): string | undefined {
+  if (value === null) {
+    return 'null'
+  }
+
+  switch (typeof value) {
+    case 'string':
+      return quoteString(value)
+    case 'boolean':
+      return value ? 'true' : 'false'
+    case 'number':
+      return Number.isFinite(value) ? String(Object.is(value, -0) ? 0 : value) : 'null'
+    case 'bigint':
+      return quoteString(String(value))
+    case 'object':
+      return safeStringify(value, options)
+    default:
+      return undefined
+  }
+}
+
+function serializeField(key: string, value: unknown, options: CompiledFieldSerializerOptions): string | undefined {
+  if (options.serializers !== null && hasOwn(options.serializers, key)) {
+    return serializeValue(options.serializers[key]!(value), options)
+  }
+
+  return key === 'err' && value instanceof Error
+    ? safeStringifyError(value, options.errorCauseDepth, options)
+    : serializeValue(value, options)
+}
+
+function compileSerializers(serializers: LogSerializers | undefined): LogSerializers | null {
+  if (serializers === undefined) {
+    return null
+  }
+
+  if (!isRecord(serializers)) {
+    throw new TypeError('options.serializers must be an object of functions')
+  }
+
+  const compiled: Record<string, (value: unknown) => unknown> = Object.create(null)
+
+  for (const [key, serializer] of Object.entries(serializers)) {
+    if (isReservedLogKey(key)) {
+      throw new TypeError(`serializer key "${key}" is reserved by the log envelope`)
+    }
+
+    if (!isFunction(serializer)) {
+      throw new TypeError(`serializer "${key}" must be a function`)
+    }
+
+    compiled[key] = serializer
+  }
+
+  return Object.freeze(compiled)
+}
+
+function isReservedLogKey(key: string): boolean {
+  return key === 'level' || key === 'time' || key === 'msg'
+}
+
 /** Owns the immutable configuration for top-level field serialization. */
-export class FieldSerializer {
+class FieldSerializer {
   readonly #options: CompiledFieldSerializerOptions
 
   constructor(options: FieldSerializerOptions) {
@@ -87,64 +150,4 @@ export class FieldSerializer {
   }
 }
 
-function serializeField(key: string, value: unknown, options: CompiledFieldSerializerOptions): string | undefined {
-  if (options.serializers !== null && hasOwn(options.serializers, key)) {
-    return serializeValue(options.serializers[key]!(value), options)
-  }
-
-  return key === 'err' && value instanceof Error
-    ? safeStringifyError(value, options.errorCauseDepth, options)
-    : serializeValue(value, options)
-}
-
-function compileSerializers(serializers: LogSerializers | undefined): LogSerializers | null {
-  if (serializers === undefined) {
-    return null
-  }
-
-  if (serializers === null || typeof serializers !== 'object' || Array.isArray(serializers)) {
-    throw new TypeError('options.serializers must be an object of functions')
-  }
-
-  const compiled: Record<string, (value: unknown) => unknown> = Object.create(null)
-
-  for (const [key, serializer] of Object.entries(serializers)) {
-    if (isReservedLogKey(key)) {
-      throw new TypeError(`serializer key "${key}" is reserved by the log envelope`)
-    }
-
-    if (typeof serializer !== 'function') {
-      throw new TypeError(`serializer "${key}" must be a function`)
-    }
-
-    compiled[key] = serializer
-  }
-
-  return Object.freeze(compiled)
-}
-
-function isReservedLogKey(key: string): boolean {
-  return key === 'level' || key === 'time' || key === 'msg'
-}
-
-/** Returns one JSON value, or `undefined` when JSON omits it. */
-export function serializeValue(value: unknown, options: SafeStringifyOptions): string | undefined {
-  if (value === null) {
-    return 'null'
-  }
-
-  switch (typeof value) {
-    case 'string':
-      return quoteString(value)
-    case 'boolean':
-      return value ? 'true' : 'false'
-    case 'number':
-      return Number.isFinite(value) ? String(Object.is(value, -0) ? 0 : value) : 'null'
-    case 'bigint':
-      return quoteString(String(value))
-    case 'object':
-      return safeStringify(value, options)
-    default:
-      return undefined
-  }
-}
+export { FieldSerializer, serializeValue }

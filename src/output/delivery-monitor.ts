@@ -1,7 +1,8 @@
 import type { DeliveryStats, DestinationErrorEvent, DestinationErrorHandler, DestinationOperation } from '../types.js'
+import { assertOptionalFunction } from '../validation.js'
 
 /** Owns shared delivery-failure counters and a reentrancy-safe observer. */
-export class DeliveryMonitor {
+class DeliveryMonitor {
   #destinationErrors = 0
   #droppedBytes = 0
   #droppedChunks = 0
@@ -11,9 +12,7 @@ export class DeliveryMonitor {
 
   /** Validates and installs an optional synchronous failure observer. */
   constructor(handler: DestinationErrorHandler | undefined) {
-    if (handler !== undefined && typeof handler !== 'function') {
-      throw new TypeError('options.onDestinationError must be a function')
-    }
+    assertOptionalFunction(handler, 'options.onDestinationError')
 
     this.#handler = handler ?? null
   }
@@ -61,3 +60,5 @@ export class DeliveryMonitor {
     })
   }
 }
+
+export { DeliveryMonitor }

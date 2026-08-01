@@ -8,7 +8,7 @@ interface NormalizedBufferingOptions {
 }
 
 /** Owns the bounded opt-in string buffer and its unref'ed flush timer. */
-export class BufferedWriter {
+class BufferedWriter {
   #buffer = ''
   #bytes = 0
   #records = 0
@@ -95,3 +95,5 @@ export class BufferedWriter {
     }
   }
 }
+
+export { BufferedWriter }
