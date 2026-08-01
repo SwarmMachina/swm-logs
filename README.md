@@ -76,8 +76,8 @@ the message only when no explicit message argument is present.
 ### Exports
 
 ```ts
-import Logger, { ConsoleBridge, LEVELS, Logger as NamedLogger } from '@swarmmachina/swm-logs'
-import type { DeliveryStats, LoggerOptions, LogRecord, LogTransport, RedactOptions } from '@swarmmachina/swm-logs'
+export { default, ConsoleBridge, LEVELS, Logger, Logger as NamedLogger } from '@swarmmachina/swm-logs'
+export type { DeliveryStats, LoggerOptions, LogRecord, LogTransport, RedactOptions } from '@swarmmachina/swm-logs'
 ```
 
 The default and named `Logger` exports refer to the same class. `LEVELS` is a
@@ -165,11 +165,17 @@ import Logger from '@swarmmachina/swm-logs'
 
 const rootLogger = new Logger({ bindings: { service: 'realtime-api' } })
 
-export function requestLogger({ requestId, remoteAddress }) {
-  return rootLogger.child({ requestId, remoteAddress })
+/**
+ * Creates the logger for one request lifecycle.
+ * @param {{ requestId: string, remoteAddress: string }} context
+ * @returns {Logger}
+ */
+export function requestLogger(context) {
+  return rootLogger.child({ requestId: context.requestId, remoteAddress: context.remoteAddress })
 }
 
 const logger = requestLogger({ requestId: 'r1', remoteAddress: '127.0.0.1' })
+
 logger.info('accepted')
 ```
 
@@ -220,12 +226,14 @@ enabled call.
 import Logger from '@swarmmachina/swm-logs'
 
 const logger = new Logger({
+  time: () => 1710000000000,
   serializers: {
     account: (account) => ({ id: account.id })
   }
 })
 
 logger.info({ account: { id: 7, accessToken: 'secret' } }, 'signed in')
+// {"level":30,"time":1710000000000,"msg":"signed in","account":{"id":7}}
 ```
 
 Redact paths support dot notation, quoted or numeric bracket notation, `*`, and
@@ -238,6 +246,7 @@ provide a static/function `censor` or set `remove: true`.
 import Logger from '@swarmmachina/swm-logs'
 
 const logger = new Logger({
+  time: () => 1710000000000,
   redact: ['req.headers.authorization', 'users[*].password']
 })
 
@@ -248,6 +257,7 @@ logger.info(
   },
   'request'
 )
+// {"level":30,"time":1710000000000,"msg":"request","req":{"headers":{"authorization":"[Redacted]"}},"users":[{"id":7,"password":"[Redacted]"}]}
 ```
 
 A single supported path is fused with bounded serialization. Multiple and
@@ -333,7 +343,7 @@ this package.
 ```js
 import { randomUUID } from 'node:crypto'
 
-class HttpTransport {
+export class HttpTransport {
   #closed = false
   #endpoint
   #failures = 0
@@ -342,7 +352,10 @@ class HttpTransport {
   #timeoutMs
 
   constructor({ endpoint, onError, timeoutMs = 2000 }) {
-    if (typeof onError !== 'function') throw new TypeError('onError must be a function')
+    if (typeof onError !== 'function') {
+      throw new TypeError('onError must be a function')
+    }
+
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
       throw new TypeError('timeoutMs must be a positive safe integer')
     }
@@ -353,7 +366,9 @@ class HttpTransport {
   }
 
   write(line, level) {
-    if (this.#closed) throw new Error('HttpTransport is closed')
+    if (this.#closed) {
+      throw new Error('HttpTransport is closed')
+    }
 
     this.#track(this.#send(randomUUID(), line, level))
   }
@@ -364,6 +379,7 @@ class HttpTransport {
 
   close() {
     this.#closed = true
+
     return this.flush()
   }
 
@@ -384,18 +400,20 @@ class HttpTransport {
     })
 
     try {
-      if (!response.ok) throw new Error(`log endpoint returned HTTP ${response.status}`)
+      if (!response.ok) {
+        throw new Error(`log endpoint returned HTTP ${response.status}`)
+      }
     } finally {
       await response.body?.cancel()
     }
   }
 
   #track(work) {
-    let pending
-
-    pending = work.catch((error) => this.#report(error)).finally(() => this.#pending.delete(pending))
+    const pending = work.catch((error) => this.#report(error))
 
     this.#pending.add(pending)
+
+    void pending.then(() => this.#pending.delete(pending))
   }
 
   #report(error) {
@@ -425,7 +443,7 @@ CREATE TABLE app_logs (
 import { randomUUID } from 'node:crypto'
 import { Pool } from 'pg'
 
-class PostgresTransport {
+export class PostgresTransport {
   #closed = false
   #closePromise
   #failures = 0
@@ -434,7 +452,9 @@ class PostgresTransport {
   #pool
 
   constructor({ connectionString, onError }) {
-    if (typeof onError !== 'function') throw new TypeError('onError must be a function')
+    if (typeof onError !== 'function') {
+      throw new TypeError('onError must be a function')
+    }
 
     this.#onError = onError
     this.#pool = new Pool({
@@ -448,7 +468,9 @@ class PostgresTransport {
   }
 
   write(line, level) {
-    if (this.#closed) throw new Error('PostgresTransport is closed')
+    if (this.#closed) {
+      throw new Error('PostgresTransport is closed')
+    }
 
     this.#track(
       this.#pool.query(
@@ -464,7 +486,9 @@ class PostgresTransport {
   }
 
   close() {
-    if (this.#closePromise !== undefined) return this.#closePromise
+    if (this.#closePromise !== undefined) {
+      return this.#closePromise
+    }
 
     this.#closed = true
     this.#closePromise = this.flush().then(() => this.#pool.end())
@@ -481,11 +505,11 @@ class PostgresTransport {
   }
 
   #track(work) {
-    let pending
-
-    pending = work.catch((error) => this.#report(error)).finally(() => this.#pending.delete(pending))
+    const pending = work.catch((error) => this.#report(error))
 
     this.#pending.add(pending)
+
+    void pending.then(() => this.#pending.delete(pending))
   }
 
   #report(error) {
@@ -503,6 +527,8 @@ class PostgresTransport {
 Either transport can be used alone, or both can receive independent copies:
 
 ```js
+/* global HttpTransport, Logger, PostgresTransport */
+
 const onError = (error) => process.stderr.write(`[log-delivery] ${String(error)}\n`)
 const httpTransport = new HttpTransport({ endpoint: process.env.LOG_ENDPOINT, onError })
 const postgresTransport = new PostgresTransport({ connectionString: process.env.DATABASE_URL, onError })
@@ -569,10 +595,19 @@ The application owns the root lifecycle. Stop accepting work first, wait for
 in-flight operations, then close the logger:
 
 ```js
+/* global rootLogger, server */
+
 let shutdownPromise
 
+/**
+ * Drains application work and the root logger once.
+ * @param {string} signal
+ * @returns {Promise<void>}
+ */
 function shutdown(signal) {
-  if (shutdownPromise !== undefined) return shutdownPromise
+  if (shutdownPromise !== undefined) {
+    return shutdownPromise
+  }
 
   shutdownPromise = (async () => {
     rootLogger.info({ signal }, 'shutdown started')
@@ -584,6 +619,10 @@ function shutdown(signal) {
   return shutdownPromise
 }
 
+/**
+ * Reports a failed signal-driven shutdown.
+ * @param {string} signal
+ */
 function handleSignal(signal) {
   void shutdown(signal).catch((error) => {
     rootLogger.fatal({ err: error }, 'shutdown failed')
@@ -615,6 +654,8 @@ const logger = new Logger({
     })
   }
 })
+
+logger.info('delivery monitoring enabled')
 ```
 
 The observer is synchronous, reentrancy-guarded, and its own failures are
@@ -704,7 +745,9 @@ pnpm release:gate
 The release gate builds the package, checks formatting/lint/source and test
 types, runs unit/e2e/leak tests, installs the packed tarball into a consumer
 fixture, and verifies package metadata and contents. Marked README examples are
-extracted and executed by the e2e suite.
+extracted and executed by the e2e suite. Every JavaScript and TypeScript fence
+is linted by `pnpm check`; annotated `// {"result":"..."}` output is compared
+with the bytes emitted by its executable example.
 
 Tests cover output byte compatibility, circular and bounded serialization,
 `Error.cause`, redaction, serializers, extension failures, transport fan-out,

@@ -44,7 +44,7 @@
   "scripts": {
     "build": "node scripts/clean-dist.js && tsc --project tsconfig.build.json",
     "build:benchmark": "node scripts/clean-benchmark-generated.js && tsc --project tsconfig.benchmark.json",
-    "check": "prettier . --check && eslint . && tsc --project tsconfig.json && tsc --project tsconfig.test.json",
+    "check": "prettier . --check && eslint . && node scripts/lint-readme-examples.js && tsc --project tsconfig.json && tsc --project tsconfig.test.json",
     "fix": "eslint . --fix && prettier . --write",
     "test": "pnpm build && pnpm test:unit",
     "test:unit": "node --experimental-strip-types --test tests/unit/*.test.*",
