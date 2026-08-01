@@ -4,7 +4,7 @@
   "benchmark": {
     "name": "swm-log-core-ci",
     "packageName": "@swarmmachina/swm-logs",
-    "packageVersion": "0.1.0",
+    "packageVersion": "0.1.1",
     "runner": "benchmark/profile-ci.ts",
     "script": "pnpm profile:ci",
     "framework": "swm-log"
@@ -12,7 +12,7 @@
   "calibration": {
     "status": "ci-runner-calibrated",
     "updatedAt": "2026-08-01",
-    "node": "24",
+    "node": "24.16.0",
     "benchkit": "0.2.0",
     "ciRunner": "dedicated swm-ci Linux x64 runner",
     "note": "Throughput and latency guards are calibrated from repeated isolated runs on the dedicated release runner. RSS and sampled-allocation ceilings retain the conservative bounds that passed on that runner. Recalibrate before changing runner hardware."
@@ -35,10 +35,10 @@
   "tests": {
     "b1": {
       "observedMedian": {
-        "operationsPerSecond": 520770,
+        "operationsPerSecond": 500870,
         "p99Ms": 0.004801256,
-        "rssPeakMiB": 68.95,
-        "allocationBytesPerOperation": 742.25
+        "rssPeakMiB": 70.19,
+        "allocationBytesPerOperation": 651.48
       },
       "guards": {
         "operationsPerSecond": { "min": 399225 },
@@ -49,10 +49,10 @@
     },
     "b2": {
       "observedMedian": {
-        "operationsPerSecond": 391828,
-        "p99Ms": 0.005737945,
-        "rssPeakMiB": 69.08,
-        "allocationBytesPerOperation": 1472.94
+        "operationsPerSecond": 394880,
+        "p99Ms": 0.005852704,
+        "rssPeakMiB": 69.67,
+        "allocationBytesPerOperation": 1318.25
       },
       "guards": {
         "operationsPerSecond": { "min": 290544 },
@@ -63,10 +63,10 @@
     },
     "b3": {
       "observedMedian": {
-        "operationsPerSecond": 317625,
-        "p99Ms": 0.007064469,
-        "rssPeakMiB": 80.73,
-        "allocationBytesPerOperation": 1974.37
+        "operationsPerSecond": 320999,
+        "p99Ms": 0.007277102,
+        "rssPeakMiB": 81.35,
+        "allocationBytesPerOperation": 1839.29
       },
       "guards": {
         "operationsPerSecond": { "min": 248728 },
@@ -77,24 +77,24 @@
     },
     "b4": {
       "observedMedian": {
-        "operationsPerSecond": 162995,
-        "p99Ms": 0.004263,
-        "rssPeakMiB": 69.84,
-        "allocationBytesPerOperation": 4658.16
+        "operationsPerSecond": 163291,
+        "p99Ms": 0.012421187,
+        "rssPeakMiB": 71.41,
+        "allocationBytesPerOperation": 3483.9
       },
       "guards": {
         "operationsPerSecond": { "min": 114968 },
-        "p99Ms": { "max": 0.013511 },
+        "p99Ms": { "max": 0.02 },
         "rssPeakMiB": { "max": 84 },
         "allocationBytesPerOperation": { "max": 5007 }
       }
     },
     "b5": {
       "observedMedian": {
-        "operationsPerSecond": 1074623,
-        "p99Ms": 0.00329573,
-        "rssPeakMiB": 136.55,
-        "allocationBytesPerOperation": 1071.34
+        "operationsPerSecond": 1090279,
+        "p99Ms": 0.003231108,
+        "rssPeakMiB": 135.31,
+        "allocationBytesPerOperation": 951.49
       },
       "guards": {
         "operationsPerSecond": { "min": 680284 },
@@ -105,10 +105,10 @@
     },
     "b7": {
       "observedMedian": {
-        "operationsPerSecond": 238959,
-        "p99Ms": 0.009794021,
-        "rssPeakMiB": 79.8,
-        "allocationBytesPerOperation": 3227.05
+        "operationsPerSecond": 237870,
+        "p99Ms": 0.009413708,
+        "rssPeakMiB": 80.78,
+        "allocationBytesPerOperation": 3092.3
       },
       "guards": {
         "operationsPerSecond": { "min": 178575 },

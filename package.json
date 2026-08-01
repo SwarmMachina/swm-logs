@@ -1,6 +1,6 @@
 {
   "name": "@swarmmachina/swm-logs",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Zero-dependency structured JSON logger for Node.js",
   "keywords": [
     "logger",
