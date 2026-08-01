@@ -534,18 +534,26 @@ published identical version succeeds; the same version with different content
 fails closed. Manual dispatch runs every gate and creates the artifact without
 publishing.
 
-Publishing currently uses `NPM_TOKEN` without npm provenance because the GitHub
-repository is private. If the repository becomes public, migrate to npm trusted
-publishing/provenance and remove the long-lived token.
+The publish job runs on a GitHub-hosted runner, requests an OIDC identity token,
+and makes npm provenance mandatory. `publishConfig.provenance` and the explicit
+`--provenance` argument also prevent an accidental non-attested publication.
 
-For a local authenticated release, first ensure `release-artifact/` is empty:
+npm requires the source repository to be public before it will issue a
+provenance attestation. A release tag therefore fails during `source-policy`
+while this GitHub repository is private. Make the repository public before
+creating the first release tag; do not bypass the check or publish the version
+manually without provenance.
+
+For a local release rehearsal, first ensure `release-artifact/` is empty:
 
 ```bash
 pnpm release
 ```
 
-The output directory is intentionally fail-closed so stale tarballs cannot be
-mixed with a new manifest. Never reuse a published version or release tag.
+This runs every correctness gate and creates the same immutable artifact, but it
+does not publish: provenance publication is CI-only. The output directory is
+intentionally fail-closed so stale tarballs cannot be mixed with a new manifest.
+Never reuse a published version or release tag.
 
 Rollback moves `latest` to a known-good version and deprecates the bad version:
 

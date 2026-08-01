@@ -15,6 +15,14 @@ function isMissingPublishedPackage(output) {
 }
 
 /**
+ * @param {string} tarballPath
+ * @returns {string[]}
+ */
+function publishArguments(tarballPath) {
+  return ['publish', tarballPath, '--provenance', '--access', 'public', '--ignore-scripts']
+}
+
+/**
  * @param {string} spec
  * @returns {{ found: boolean, integrity?: string }}
  */
@@ -83,7 +91,7 @@ async function main() {
     return
   }
 
-  execFileSync('npm', ['publish', tarballPath, '--access', 'public', '--ignore-scripts'], {
+  execFileSync('npm', publishArguments(tarballPath), {
     stdio: 'inherit'
   })
 }
@@ -97,4 +105,4 @@ if (isMain) {
   })
 }
 
-export { isMissingPublishedPackage }
+export { isMissingPublishedPackage, publishArguments }

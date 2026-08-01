@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { verifyPackedFiles } from '../../scripts/build-release-artifact.js'
-import { isMissingPublishedPackage } from '../../scripts/publish-release-artifact.js'
+import { isMissingPublishedPackage, publishArguments } from '../../scripts/publish-release-artifact.js'
 import { verifyReleaseMetadata } from '../../scripts/verify-release.js'
 
 const manifest = {
@@ -44,4 +44,15 @@ test('release tarball accepts only package roots, dist, and src', () => {
 test('npm missing-package detection accepts E404 only', () => {
   assert.equal(isMissingPublishedPackage('npm error code E404'), true)
   assert.equal(isMissingPublishedPackage('npm error code E401'), false)
+})
+
+test('npm publish always requests provenance for the verified tarball', () => {
+  assert.deepEqual(publishArguments('/tmp/package.tgz'), [
+    'publish',
+    '/tmp/package.tgz',
+    '--provenance',
+    '--access',
+    'public',
+    '--ignore-scripts'
+  ])
 })

@@ -30,6 +30,7 @@ try {
   assert.equal(manifest.name, '@swarmmachina/swm-logs')
   assert.equal(manifest.repository.url, 'git+https://github.com/SwarmMachina/swm-logs.git')
   assert.equal(manifest.publishConfig.access, 'public')
+  assert.equal(manifest.publishConfig.provenance, true)
   assert.deepEqual(manifest.dependencies, undefined, 'package must have zero runtime dependencies')
   assert.equal(manifest.exports['.'].types, './dist/index.d.ts')
   assert.equal(manifest.exports['.'].import, './dist/index.js')
