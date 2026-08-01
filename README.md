@@ -324,245 +324,202 @@ outputs from receiving the record.
 addition to stdout or the configured destination. Console `buffering` never
 delays transport delivery.
 
-HTTP and PostgreSQL delivery can share one bounded batching transport while
-keeping their failure handling independent. The following belongs to the
-application (`pnpm add pg`); `pg` is not a dependency of this package. The
-PostgreSQL table uses `PRIMARY KEY (batch_id, position)` so retrying a batch is
-idempotent:
+For low-volume direct delivery, HTTP and PostgreSQL can be separate resource
+owners. Keep each class in its own application module; they are shown together
+here only to document the complete transport contract. The PostgreSQL example
+uses the application-owned dependency `pg` (`pnpm add pg`), not a dependency of
+this package.
+
+```js
+import { randomUUID } from 'node:crypto'
+
+class HttpTransport {
+  #closed = false
+  #endpoint
+  #failures = 0
+  #onError
+  #pending = new Set()
+  #timeoutMs
+
+  constructor({ endpoint, onError, timeoutMs = 2000 }) {
+    if (typeof onError !== 'function') throw new TypeError('onError must be a function')
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+      throw new TypeError('timeoutMs must be a positive safe integer')
+    }
+
+    this.#endpoint = new URL(endpoint).href
+    this.#onError = onError
+    this.#timeoutMs = timeoutMs
+  }
+
+  write(line, level) {
+    if (this.#closed) throw new Error('HttpTransport is closed')
+
+    this.#track(this.#send(randomUUID(), line, level))
+  }
+
+  flush() {
+    return Promise.all([...this.#pending]).then(() => undefined)
+  }
+
+  close() {
+    this.#closed = true
+    return this.flush()
+  }
+
+  stats() {
+    return { failures: this.#failures, pendingRequests: this.#pending.size }
+  }
+
+  async #send(eventId, line, level) {
+    const response = await fetch(this.#endpoint, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-ndjson',
+        'idempotency-key': eventId,
+        'x-log-level': String(level)
+      },
+      body: line,
+      signal: AbortSignal.timeout(this.#timeoutMs)
+    })
+
+    try {
+      if (!response.ok) throw new Error(`log endpoint returned HTTP ${response.status}`)
+    } finally {
+      await response.body?.cancel()
+    }
+  }
+
+  #track(work) {
+    let pending
+
+    pending = work.catch((error) => this.#report(error)).finally(() => this.#pending.delete(pending))
+
+    this.#pending.add(pending)
+  }
+
+  #report(error) {
+    this.#failures += 1
+
+    try {
+      this.#onError(error)
+    } catch {
+      // Failure reporting must not create an unhandled rejection.
+    }
+  }
+}
+```
+
+The PostgreSQL destination stores one complete JSON record per query. Values are
+parameterized; application data is never interpolated into SQL:
 
 ```sql
 CREATE TABLE app_logs (
-  batch_id uuid NOT NULL,
-  position integer NOT NULL,
-  record jsonb NOT NULL,
-  PRIMARY KEY (batch_id, position)
+  event_id uuid PRIMARY KEY,
+  level integer NOT NULL,
+  record jsonb NOT NULL
 );
 ```
 
 ```js
 import { randomUUID } from 'node:crypto'
-
-import Logger from '@swarmmachina/swm-logs'
 import { Pool } from 'pg'
 
-const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
-
-class PermanentDeliveryError extends Error {}
-
-class BoundedBatchTransport {
-  #batchSize
+class PostgresTransport {
   #closed = false
-  #droppedRecords = 0
-  #failedRecords = 0
-  #maxPendingBytes
-  #maxRetries
+  #closePromise
+  #failures = 0
   #onError
-  #pending = Promise.resolve()
-  #pendingBytes = 0
-  #queue = []
-  #sendBatch
-  #timeoutMs
-  #timer
+  #pending = new Set()
+  #pool
 
-  constructor({
-    sendBatch,
-    onError,
-    batchSize = 100,
-    flushInterval = 1000,
-    maxPendingBytes = 4 * 1024 * 1024,
-    maxRetries = 2,
-    timeoutMs = 2000
-  }) {
-    if (typeof sendBatch !== 'function' || typeof onError !== 'function') {
-      throw new TypeError('sendBatch and onError must be functions')
-    }
+  constructor({ connectionString, onError }) {
+    if (typeof onError !== 'function') throw new TypeError('onError must be a function')
 
-    for (const [name, value] of Object.entries({ batchSize, flushInterval, maxPendingBytes, timeoutMs })) {
-      if (!Number.isSafeInteger(value) || value <= 0) {
-        throw new TypeError(`${name} must be a positive safe integer`)
-      }
-    }
-
-    if (!Number.isSafeInteger(maxRetries) || maxRetries < 0) {
-      throw new TypeError('maxRetries must be a non-negative safe integer')
-    }
-
-    this.#batchSize = batchSize
-    this.#maxPendingBytes = maxPendingBytes
-    this.#maxRetries = maxRetries
     this.#onError = onError
-    this.#sendBatch = sendBatch
-    this.#timeoutMs = timeoutMs
-    this.#timer = setInterval(() => this.#scheduleAll(), flushInterval)
-    this.#timer.unref()
+    this.#pool = new Pool({
+      connectionString,
+      max: 4,
+      connectionTimeoutMillis: 2000,
+      statement_timeout: 2000,
+      query_timeout: 2500
+    })
+    this.#pool.on('error', (error) => this.#report(error))
   }
 
-  write(line, _level) {
-    const payload = Buffer.from(line)
-    const bytes = payload.byteLength
+  write(line, level) {
+    if (this.#closed) throw new Error('PostgresTransport is closed')
 
-    if (this.#closed || bytes > this.#maxPendingBytes - this.#pendingBytes) {
-      this.#droppedRecords += 1 // Drop newest; export this counter.
-      return
-    }
-
-    this.#pendingBytes += bytes
-    this.#queue.push({ bytes, payload })
-
-    if (this.#queue.length >= this.#batchSize) this.#scheduleOne()
+    this.#track(
+      this.#pool.query(
+        `INSERT INTO app_logs (event_id, level, record)
+         VALUES ($1::uuid, $2::integer, $3::jsonb)`,
+        [randomUUID(), level, line]
+      )
+    )
   }
 
   flush() {
-    this.#scheduleAll()
-    return this.#pending
+    return Promise.all([...this.#pending]).then(() => undefined)
   }
 
   close() {
-    if (!this.#closed) {
-      this.#closed = true
-      clearInterval(this.#timer)
-    }
+    if (this.#closePromise !== undefined) return this.#closePromise
 
-    return this.flush()
+    this.#closed = true
+    this.#closePromise = this.flush().then(() => this.#pool.end())
+
+    return this.#closePromise
   }
 
   stats() {
     return {
-      droppedRecords: this.#droppedRecords,
-      failedRecords: this.#failedRecords,
-      pendingBytes: this.#pendingBytes
+      failures: this.#failures,
+      pendingQueries: this.#pending.size,
+      poolWaitingCount: this.#pool.waitingCount
     }
   }
 
-  #scheduleAll() {
-    while (this.#queue.length > 0) this.#scheduleOne()
+  #track(work) {
+    let pending
+
+    pending = work.catch((error) => this.#report(error)).finally(() => this.#pending.delete(pending))
+
+    this.#pending.add(pending)
   }
 
-  #scheduleOne() {
-    const entries = this.#queue.splice(0, this.#batchSize)
-    const bytes = entries.reduce((total, entry) => total + entry.bytes, 0)
-    const batch = {
-      id: randomUUID(),
-      records: entries.map((entry) => entry.payload)
+  #report(error) {
+    this.#failures += 1
+
+    try {
+      this.#onError(error)
+    } catch {
+      // Failure reporting must not create an unhandled rejection.
     }
-
-    this.#pending = this.#pending.then(async () => {
-      try {
-        await this.#sendWithRetry(batch)
-      } catch (error) {
-        this.#failedRecords += batch.records.length
-
-        try {
-          this.#onError(error, batch)
-        } catch {
-          // Failure reporting must never break the delivery chain.
-        }
-      } finally {
-        this.#pendingBytes -= bytes
-      }
-    })
-  }
-
-  async #sendWithRetry(batch) {
-    let lastError
-
-    for (let attempt = 0; attempt <= this.#maxRetries; attempt += 1) {
-      try {
-        await this.#sendBatch(batch, AbortSignal.timeout(this.#timeoutMs))
-        return
-      } catch (error) {
-        lastError = error
-
-        if (error instanceof PermanentDeliveryError || attempt === this.#maxRetries) break
-
-        await delay(Math.min(100 * 2 ** attempt, 1000))
-      }
-    }
-
-    throw lastError
   }
 }
+```
 
-async function sendHttpBatch(batch, signal) {
-  const response = await fetch(process.env.LOG_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/x-ndjson',
-      'idempotency-key': batch.id
-    },
-    body: Buffer.concat(batch.records),
-    signal
-  })
+Either transport can be used alone, or both can receive independent copies:
 
-  if (!response.ok) {
-    const message = `log endpoint returned HTTP ${response.status}`
-    const retryable = response.status === 408 || response.status === 429 || response.status >= 500
-
-    throw retryable ? new Error(message) : new PermanentDeliveryError(message)
-  }
-}
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 4,
-  connectionTimeoutMillis: 2000,
-  statement_timeout: 2000,
-  query_timeout: 2500
-})
-
-pool.on('error', (error) => {
-  process.stderr.write(`[postgres-log-pool] ${String(error)}\n`)
-})
-
-async function sendPostgresBatch(batch, _signal) {
-  const values = []
-  const tuples = batch.records.map((record, position) => {
-    const offset = values.length
-    values.push(batch.id, position, record.toString('utf8'))
-    return `($${offset + 1}::uuid,$${offset + 2}::integer,$${offset + 3}::jsonb)`
-  })
-
-  await pool.query(
-    `INSERT INTO app_logs (batch_id, position, record)
-     VALUES ${tuples.join(',')}
-     ON CONFLICT (batch_id, position) DO NOTHING`,
-    values
-  )
-}
-
-const transportOptions = {
-  onError(error, batch) {
-    process.stderr.write(`[log-delivery] batch=${batch.id} ${String(error)}\n`)
-  }
-}
-const httpTransport = new BoundedBatchTransport({ ...transportOptions, sendBatch: sendHttpBatch })
-const postgresTransport = new BoundedBatchTransport({ ...transportOptions, sendBatch: sendPostgresBatch })
+```js
+const onError = (error) => process.stderr.write(`[log-delivery] ${String(error)}\n`)
+const httpTransport = new HttpTransport({ endpoint: process.env.LOG_ENDPOINT, onError })
+const postgresTransport = new PostgresTransport({ connectionString: process.env.DATABASE_URL, onError })
 const logger = new Logger({ console: false, transports: [httpTransport, postgresTransport] })
 
 logger.info({ requestId: 'r1' }, 'accepted')
-
-// Stop producers first, then drain transports before closing their resources.
 await logger.close()
-await pool.end()
 ```
 
-The HTTP receiver must persist each `idempotency-key` and return success for a
-replayed batch. PostgreSQL retries are deduplicated by the composite primary key;
-all values remain parameterized. `maxPendingBytes` bounds retained queued plus
-in-flight payload buffers (apart from small per-record metadata and a temporary
-batch send copy), overflow drops the newest record, retry count is finite, HTTP
-honors `AbortSignal`, and the pool has connection/query/statement timeouts. Export
-`stats()` together with `pool.waitingCount` and pool `error` events.
-
-Size the PostgreSQL pool across all service replicas, not per process in
-isolation. Classify known permanent database errors in the same way as permanent
-HTTP failures if the sink is extended beyond valid logger-generated JSON.
-
-Using both transports is independent fan-out, not a transaction: one sink can
-succeed while the other fails. If both destinations must observe the same
-durable sequence, write once to a WAL/outbox and deliver from there instead of
-treating either transport as an implicit fallback. The bounded queue itself is
-process memory and pending batches are lost on an ungraceful process crash.
+These transports intentionally have no batching, retry queue, or backpressure
+bound. `write()` starts one asynchronous operation per record, so the in-flight
+sets and the PostgreSQL pool wait queue can grow without limit under sustained
+load. Use them only for low-rate delivery; export `stats()`, alert on failures
+and growing pending counts, and move high-volume or durable delivery to a
+bounded queue, WAL, outbox, or external logging agent. A final HTTP/SQL failure
+is counted and the record is dropped. Fan-out to both destinations is not
+transactional: one can succeed while the other fails.
 
 ## Output, backpressure, and shutdown
 
