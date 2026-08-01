@@ -1,26 +1,37 @@
 # @swarmmachina/swm-logs
 
+[![CI](https://github.com/SwarmMachina/swm-logs/actions/workflows/ci.yml/badge.svg)](https://github.com/SwarmMachina/swm-logs/actions/workflows/ci.yml)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
-[![Node.js Version](https://img.shields.io/badge/node-22.x%20%7C%2024.x-brightgreen)](https://nodejs.org/)
-[![dependencies](https://img.shields.io/badge/runtime_dependencies-0-brightgreen.svg)](#runtime-design)
-[![stability](https://img.shields.io/badge/stability-experimental-yellow.svg)](#stability)
+[![Node.js](https://img.shields.io/badge/node-22%20%7C%2024-brightgreen.svg)](https://nodejs.org/)
+[![runtime dependencies](https://img.shields.io/badge/runtime_dependencies-0-brightgreen.svg)](#runtime-requirements)
+[![stability](https://img.shields.io/badge/stability-experimental-orange.svg)](#stability)
 
-A zero-runtime-dependency structured JSON logger for Node.js. It emits pino-compatible numeric levels and NDJSON directly to stdout, stderr, a file descriptor, or a writable destination.
+A zero-runtime-dependency structured JSON logger for Node.js. It emits one
+newline-delimited JSON record per call to stdout, stderr, a file descriptor, a
+writable destination, or lifecycle-aware transports.
 
 ## Features
 
-- Pino-compatible levels: `trace=10` through `fatal=60`, plus custom levels
-- Deterministic `level`, `time`, `msg`, bindings, and fields envelope
-- Child bindings serialized once during `child()` construction
-- Manual primitive fast path; circular and BigInt-safe nested serialization
-- Recursive Error `cause` serialization with a finite depth limit
-- Compiled redact paths that inspect only configured branches
-- Keyed serializers and bounded nested serialization
-- Immediate output by default; bounded opt-in buffering with `flushSync()`
-- Opt-in structured hooks, custom formatters, and fire-and-forget transport fan-out
-- Observable destination failures with shared loss counters
-- Opt-in, reversible `console.*` bridge
-- Native ESM and TypeScript declarations on Node.js 22 and 24
+- **Stable NDJSON envelope** - Numeric `level`, epoch-millisecond `time`,
+  optional `msg`, bindings, and call fields.
+- **Pino-compatible severities** - `trace=10` through `fatal=60`, plus explicit
+  custom levels.
+- **Cheap child loggers** - Bindings are serialized once during `child()`
+  construction and output state is shared.
+- **Safe serialization** - Circular references, `BigInt`, bounded object depth,
+  bounded edge count, and recursive `Error.cause` handling.
+- **Compiled redaction** - Exact, wildcard, dot, and bracket paths with censor
+  and removal modes.
+- **Fast default path** - Manual JSON encoding without a record object, callback
+  arrays, or runtime dependencies.
+- **Opt-in extensions** - Keyed serializers, structured hooks, formatters,
+  transports, and a reversible `console.*` bridge.
+- **Explicit delivery lifecycle** - Immediate output by default, bounded opt-in
+  buffering, synchronous crash flushing, and asynchronous transport close.
+- **Observable failures** - Contained destination errors, loss counters, and a
+  synchronous failure observer.
+- **Modern package surface** - Native ESM and TypeScript declarations for
+  Node.js 22 and 24.
 
 ## Installation
 
@@ -28,13 +39,15 @@ A zero-runtime-dependency structured JSON logger for Node.js. It emits pino-comp
 pnpm add @swarmmachina/swm-logs
 ```
 
-### Runtime requirements
+## Runtime requirements
 
-- Node.js `22.x` or `24.x`; other majors are rejected by the package engine constraint.
+- Node.js `22.x` or `24.x`; other majors are rejected by the package engine
+  constraint.
 - Native ESM. CommonJS `require()` is not a supported package surface.
-- No runtime dependencies, bundled transports, workers, or hidden background threads. External transport modules own those resources.
+- Zero runtime dependencies. Transports, workers, file rotation, network
+  clients, and vendor exporters are intentionally not bundled.
 
-## Quick start2
+## Quick Start
 
 <!-- example:test quick-start -->
 
@@ -53,32 +66,54 @@ The first call emits one line shaped like this:
 { "level": 30, "time": 1710000000000, "msg": "listening", "service": "gateway", "port": 3000 }
 ```
 
-`time` is Unix epoch milliseconds. Every output record ends with exactly one newline. The order is stable: envelope, pre-serialized bindings, then call fields. `level`, `time`, and `msg` in bindings or fields are ignored so application data cannot spoof the envelope.
+`time` is Unix epoch milliseconds. Every record ends with exactly one newline.
+The default field order is envelope, pre-serialized bindings, then call fields.
+Application fields named `level` or `time` are ignored. A `msg` field is used as
+the message only when no explicit message argument is present.
 
-## Child request loggers
+## API Documentation
 
-A connection/request hook should create one child and reuse it for that lifecycle. This is the intended integration shape for `swm-core`:
+### Exports
 
-<!-- example:test child-hook -->
-
-```js
-import Logger from '@swarmmachina/swm-logs'
-
-const rootLogger = new Logger({ bindings: { service: 'realtime-api' } })
-
-export function requestLogger(connection) {
-  return rootLogger.child({
-    connectionId: connection.id,
-    remoteAddress: connection.remoteAddress
-  })
-}
+```ts
+import Logger, { ConsoleBridge, LEVELS, Logger as NamedLogger } from '@swarmmachina/swm-logs'
+import type { DeliveryStats, LoggerOptions, LogRecord, LogTransport, RedactOptions } from '@swarmmachina/swm-logs'
 ```
 
-Bindings are serialized when `child()` runs. Mutating a nested binding later does not change subsequent output. Children share the root destination and optional buffer; calling `close()` on any related logger closes that shared writer.
+The default and named `Logger` exports refer to the same class. `LEVELS` is a
+frozen map of the six built-in numeric severities.
 
-## Log calls
+### `new Logger(options?)`
 
-Every built-in or custom level accepts the same shapes:
+Construction validates the complete configuration. Invalid levels, paths,
+callbacks, destinations, or bounds throw a synchronous `TypeError` before the
+logger becomes visible to the application.
+
+| Option               | Default      | Purpose                                                            |
+| -------------------- | ------------ | ------------------------------------------------------------------ |
+| `level`              | `'info'`     | Minimum enabled severity; `'silent'` disables output.              |
+| `customLevels`       | none         | Additional name-to-number severity map.                            |
+| `bindings`           | `{}`         | Root fields serialized once during construction.                   |
+| `redact`             | none         | Path list or rich censor/removal configuration.                    |
+| `serializers`        | none         | Top-level field serializers keyed by field name.                   |
+| `buffering`          | `false`      | `true` for defaults or a bounded console buffer configuration.     |
+| `console`            | `true`       | Deliver to `destination` in addition to transports.                |
+| `destination`        | `'stdout'`   | `'stdout'`, `'stderr'`, a numeric fd, or an object with `write()`. |
+| `transports`         | `[]`         | Fire-and-forget delivery owners.                                   |
+| `hooks`              | none         | Synchronous `beforeFormat` and `afterFormat` hooks.                |
+| `formatter`          | JSON encoder | Custom record-to-string encoder.                                   |
+| `onDestinationError` | none         | Synchronous observer for contained delivery failures.              |
+| `time`               | `Date.now`   | Epoch-millisecond clock, useful for deterministic tests.           |
+| `errorCauseDepth`    | `5`          | Maximum number of errors retained from a cause chain.              |
+| `depthLimit`         | `5`          | Maximum retained nested object/array depth.                        |
+| `edgeLimit`          | `100`        | Maximum retained properties/elements per container.                |
+
+`console: false` requires at least one transport. A custom `destination` or
+console `buffering` cannot be combined with `console: false`.
+
+### Log methods
+
+Every built-in or custom level accepts the same call shapes:
 
 ```ts
 logger.info('message')
@@ -86,11 +121,13 @@ logger.info({ requestId: 'r1', ok: true }, 'message')
 logger.error(error)
 logger.error({ err: error, requestId: 'r1' }, 'message')
 logger.info('user %s has %d jobs', 'Ada', 3)
+logger.log('notice', { deploymentId: 'd1' }, 'deployed')
 ```
 
-Enabled methods return `void`. `fatal()` logs at severity 60 and does not exit the process.
-
-### Levels
+`trace()`, `debug()`, `info()`, `warn()`, `error()`, `fatal()`, and `log()`
+return `void`. `fatal()` writes severity 60; it does not terminate the process.
+Serialization, clock, hook, formatter, and destination failures do not escape a
+log method. A processing failure becomes a valid `logger_error` record.
 
 | Name    | Value |
 | ------- | ----: |
@@ -101,32 +138,81 @@ Enabled methods return `void`. `fatal()` logs at severity 60 and does not exit t
 | `error` |    50 |
 | `fatal` |    60 |
 
-Configure a threshold with `level`, change it through `logger.level`, and check it with `logger.isLevelEnabled(name)`. `silent` disables all output.
+Read or change the threshold through `logger.level`. Use
+`logger.isLevelEnabled(level)` before expensive field construction. An unknown
+level returns `false`; an invalid dynamic `log()` level produces a contained
+`logger_error` record.
 
-Custom levels use the explicit `logger.log(name, ...)` method. The logger does not install per-instance methods or allocate closures for them.
+Custom levels are called through `log()` rather than generated instance
+methods:
 
 ```ts
-import Logger from '@swarmmachina/swm-logs'
-
 const customLevels = { notice: 35 } as const
 const logger = new Logger({ customLevels, level: 'trace' })
 
 logger.log('notice', 'deployed')
 ```
 
+### Child loggers
+
+Create one child per request, job, connection, or other bounded lifecycle and
+reuse it for all records in that scope:
+
+<!-- example:test child-logger -->
+
+```js
+import Logger from '@swarmmachina/swm-logs'
+
+const rootLogger = new Logger({ bindings: { service: 'realtime-api' } })
+
+export function requestLogger({ requestId, remoteAddress }) {
+  return rootLogger.child({ requestId, remoteAddress })
+}
+
+const logger = requestLogger({ requestId: 'r1', remoteAddress: '127.0.0.1' })
+logger.info('accepted')
+```
+
+`child(bindings, { level? })` pre-serializes new bindings and shares levels,
+serializers, extensions, destination, transports, buffer, and delivery counters
+with the root. Later mutation of a nested binding does not change emitted
+output. `bindings()` returns a shallow copy of effective binding values.
+
+The output lifecycle is also shared. Call `close()` once from the component that
+owns the root logger; closing through a child affects the same transports and
+buffer.
+
+### Lifecycle and diagnostics
+
+- `flush()` sends buffered console output and awaits transport `flush()`
+  methods when present.
+- `flushSync()` uses synchronous capabilities only. Use it on fatal paths where
+  asynchronous cleanup cannot be awaited.
+- `close()` flushes/releases the shared console buffer and coordinates all
+  transport `close()` methods concurrently.
+- `deliveryStats()` returns a detached snapshot with `destinationErrors`,
+  `droppedBytes`, `droppedChunks`, and `droppedRecords`.
+
+`flush()` and `close()` return `void` when every output is synchronous and a
+`Promise<void>` when asynchronous transports participate. `await` works for
+both forms.
+
 ## Serialization and redaction
 
-Primitive fields take the manual fast path. Nested objects use safe `JSON.stringify()` behavior with these extensions:
+Primitive fields use a manual encoder. Nested values follow JSON semantics with
+these finite-safety extensions:
 
 - circular ancestor references become `"[Circular]"`;
-- BigInt values become decimal strings;
-- `undefined`, function, symbol values, and symbol keys are omitted;
+- `BigInt` values become decimal strings;
+- `undefined`, functions, symbols, and symbol keys are omitted;
 - non-finite numbers become `null`;
-- `err` values include `type`, `message`, `stack`, recursive `cause`, and enumerable custom properties.
+- `err` values include `type`, `message`, `stack`, recursive `cause`, and
+  enumerable custom properties;
+- values beyond `depthLimit` or `edgeLimit` become finite markers.
 
-The default Error depth is five objects. Configure `errorCauseDepth` with a positive integer. General nested serialization defaults to `depthLimit: 5` and `edgeLimit: 100`; deeper containers become `[Object]`/`[Array]`, while excess edges are represented by a finite marker.
-
-Top-level serializers run only for matching keys. Bindings are serialized once during root/child construction; call-field serializers run once per enabled log call.
+Top-level serializers run only for matching keys. Binding serializers run once
+when a root or child is constructed; call-field serializers run once for every
+enabled call.
 
 <!-- example:test serializers -->
 
@@ -142,71 +228,77 @@ const logger = new Logger({
 logger.info({ account: { id: 7, accessToken: 'secret' } }, 'signed in')
 ```
 
-A single redact path uses a dedicated redactor and is fused with bounded JSON serialization, so the default output path neither mutates nor clones caller data. Multiple and overlapping paths use the general branch-trie fallback, which clones only matched containers. Dot notation, quoted/numeric bracket notation, `*`, and `[*]` are supported. Rich configuration adds a static/function `censor` or `remove: true`.
+Redact paths support dot notation, quoted or numeric bracket notation, `*`, and
+`[*]`. A path list replaces matches with `"[Redacted]"`. Rich configuration can
+provide a static/function `censor` or set `remove: true`.
 
 <!-- example:test redact -->
 
 ```js
 import Logger from '@swarmmachina/swm-logs'
 
-const logger = new Logger({ redact: ['req.headers.authorization', 'user.password'] })
+const logger = new Logger({
+  redact: ['req.headers.authorization', 'users[*].password']
+})
 
 logger.info(
   {
     req: { headers: { authorization: 'Bearer secret' } },
-    user: { id: 7, password: 'secret' }
+    users: [{ id: 7, password: 'secret' }]
   },
   'request'
 )
 ```
 
-For arrays, use a wildcard such as `users[*].password`. Wildcard cost grows with the number of keys/elements at the matched level; prefer exact paths where the schema is known.
-
-Serialization, time, hook, formatter, and destination failures never escape a log method. A processing failure becomes a valid record with `logger_error`. Invalid constructor or `child()` configuration throws an explanatory `TypeError`.
+A single supported path is fused with bounded serialization. Multiple and
+overlapping paths use a compiled branch trie and copy only matched containers;
+caller-owned data is not mutated. Wildcard work grows with the number of
+properties or elements at the matched level, so prefer exact paths for known
+schemas.
 
 ## Hooks, formatters, and transports
 
-The extension flow is explicit:
+The opt-in extension flow is:
 
-`log arguments → prepared record → beforeFormat hooks → formatter → afterFormat hooks → console + transports`
+```text
+arguments → prepared record → beforeFormat → formatter → afterFormat → console + transports
+```
 
-When `hooks` and `formatter` are both absent, the logger retains the direct manual JSON fast path: it does not allocate a `LogRecord`, build callback arrays, or perform virtual hook calls. Enabling either option selects the structured extension path for that root and its children.
+With no hooks and no formatter, the logger does not allocate `LogRecord` objects
+or callback arrays. Enabling either selects the structured path for that root
+and its children.
 
-- `beforeFormat` receives an owned record whose bindings are snapshotted and whose fields have already passed redact and keyed serializers. It may mutate top-level record state or return `false` to drop the record. Values introduced by a trusted hook are not run through redact/serializers a second time.
-- `formatter` converts that record to a string. The logger adds `\n` when absent; a non-JSON formatter intentionally leaves the pino-compatible NDJSON surface.
-- `afterFormat` observes/replaces the string or returns `false` to drop it.
-- Every configured transport receives the final string plus numeric severity and owns its queue, worker, routing, retry, timeout, and failure policy.
+- `beforeFormat` receives an owned record after serializers and redaction. It
+  may mutate top-level state or return `false` to drop the record.
+- `formatter` returns a string. A trailing newline is added when absent.
+- `afterFormat` can observe or replace the line, or return `false` to drop it.
+- Hook/formatter failures become `logger_error` records.
+
+Transports are stateful delivery owners and should be classes when they own a
+queue, socket, worker, file, or timer:
 
 <!-- example:test extensions -->
 
 ```js
 import Logger from '@swarmmachina/swm-logs'
 
-class AsyncTransport {
-  #pending = Promise.resolve()
-  #send
-
-  constructor(send) {
-    this.#send = send
-  }
+class MemoryTransport {
+  #lines = []
 
   write(line, level) {
-    this.#pending = this.#pending.then(() => this.#send(line, level)).catch(() => {})
+    this.#lines.push({ level, line })
   }
 
-  flush() {
-    return this.#pending
+  records() {
+    return this.#lines.map(({ line }) => JSON.parse(line))
   }
 
   close() {
-    return this.flush()
+    this.#lines = []
   }
 }
 
-const wal = new AsyncTransport(async (_line, _level) => {})
-const database = new AsyncTransport(async (_line, _level) => {})
-const http = new AsyncTransport(async (_line, _level) => {})
-
+const transport = new MemoryTransport()
 const logger = new Logger({
   console: false,
   hooks: {
@@ -214,26 +306,41 @@ const logger = new Logger({
       record.fields.service = 'gateway'
     }
   },
-  transports: [wal, database, http]
+  transports: [transport]
 })
 
 logger.info('listening')
 await logger.close()
 ```
 
-`console` defaults to `true`, so configured transports normally receive the same record in addition to stdout or `destination`. Set `console: false` for transport-only delivery. This requires at least one transport; use `level: 'silent'` when the whole logger should be disabled. Core `buffering` applies only to console output.
+`LogTransport.write(line, level)` is a fire-and-forget acceptance boundary. It
+must enqueue or accept quickly; blocking I/O blocks the event loop. Each
+transport owns queue bounds, batching, backpressure, retry limits,
+idempotency/deduplication, timeouts, persistence, and asynchronous failure
+metrics. A synchronous transport throw is contained and does not prevent later
+outputs from receiving the record.
 
-`LogTransport.write()` is fire-and-forget: core invokes it but never awaits work. It must only accept/enqueue and return quickly. A transport that performs blocking I/O inside `write()` violates the contract and will block the event loop; core deliberately does not hide that behind another queue. Asynchronous failures, retry, batching, backpressure, and drop metrics belong to each transport. A synchronous throw is contained so one broken transport does not prevent later transports from receiving the record.
+`console` defaults to `true`, so transports normally receive each record in
+addition to stdout or the configured destination. Console `buffering` never
+delays transport delivery.
 
-`flush()` and `close()` coordinate all transport lifecycles concurrently and may be awaited. `flushSync()` invokes only synchronous capabilities exposed by the transports. Multistream routing, worker delivery, pretty printing, file rotation, WAL, database, HTTP, backoff, and vendor exporters belong in separate modules implementing `LogTransport`.
+## Output, backpressure, and shutdown
 
-## Output and shutdown
+Immediate mode calls `process.stdout.write(line)` by default and adds no logger
+queue. If a Node.js stream returns `false`, the runtime/stream owns its pending
+bytes and logging continues. That signal is backpressure, not a delivery error;
+a persistently slow pipe may therefore grow stream-owned memory.
 
-Immediate mode calls `process.stdout.write(line)` by default. It does not add a transport queue. When a Node.js stream returns `false`, logging continues and the stream/runtime owns the queued bytes; `false` is backpressure, not a counted delivery failure. A slow pipe can therefore grow the stream's own pending memory.
+For a strict application-level memory bound, use a transport with a bounded
+queue and an explicit overflow policy. Decide whether overflow blocks the
+producer, drops newest/oldest records, or persists to a WAL, and export those
+decisions as metrics.
 
-stdout backed by a regular file is synchronous on supported Node.js platforms; the crash test writes 10,000 records and immediately calls `process.exit()`. Piped stdout may be asynchronous. When crash durability is mandatory, redirect to a regular file or pass its numeric descriptor.
+stdout backed by a regular file is synchronous on supported Node.js platforms;
+piped stdout may be asynchronous. When crash durability is mandatory, use a
+regular file or a numeric descriptor and call `flushSync()` on the fatal path.
 
-### Buffered mode
+### Buffered console output
 
 <!-- example:test buffered -->
 
@@ -245,20 +352,81 @@ const logger = new Logger({
 })
 
 logger.info('batched')
-logger.warn('flushes the whole buffer')
+logger.warn('flushes the whole console buffer')
 
 process.once('beforeExit', () => logger.flushSync())
 ```
 
-The console buffer flushes at `maxBytes`, on the unref'ed timer, or at `flushLevel` and above. Transports still receive every record immediately through their own fire-and-forget boundary. The console buffer is reset even if the destination fails, preserving the logger's memory bound. A single oversized line may temporarily exceed the bound. `flushSync()` uses `fs.writeSync()` when stdout/stderr or a numeric descriptor is available; a generic custom writer can only receive a normal `write()` call.
+The buffer flushes at `maxBytes`, on an unref'ed interval, or at `flushLevel`
+and above. Defaults are 64 KiB, 1000 ms, and `warn`. It is reset even when the
+destination throws, preserving the configured bound; one oversized record can
+temporarily exceed that bound.
 
-Contained delivery failures increment `destinationErrors`, `droppedChunks`, `droppedRecords`, and `droppedBytes`. Read a detached snapshot through `logger.deliveryStats()` and optionally install `onDestinationError`. The observer is synchronous, no-throw, and reentrancy-guarded; it must not be used as the primary delivery path.
+`flushSync()` uses `fs.writeSync()` when a numeric descriptor is known. A
+generic writer without `fd` can only receive its ordinary `write()` call, which
+the logger cannot make durable on its behalf.
 
-Call `await logger.close()` during graceful shutdown; synchronous writers return immediately while transports may finish concurrently. Use `flushSync()` only for console output and transports that explicitly provide a synchronous crash path.
+### Graceful shutdown
+
+The application owns the root lifecycle. Stop accepting work first, wait for
+in-flight operations, then close the logger:
+
+```js
+let shutdownPromise
+
+function shutdown(signal) {
+  if (shutdownPromise !== undefined) return shutdownPromise
+
+  shutdownPromise = (async () => {
+    rootLogger.info({ signal }, 'shutdown started')
+    await server.stopAccepting()
+    await server.drain(10_000)
+    await rootLogger.close()
+  })()
+
+  return shutdownPromise
+}
+
+function handleSignal(signal) {
+  void shutdown(signal).catch((error) => {
+    rootLogger.fatal({ err: error }, 'shutdown failed')
+    rootLogger.flushSync()
+    process.exitCode = 1
+  })
+}
+
+process.once('SIGTERM', () => handleSignal('SIGTERM'))
+process.once('SIGINT', () => handleSignal('SIGINT'))
+```
+
+Put timeouts around external transport cleanup; the logger cannot impose a
+deadline on user-owned `flush()` or `close()` implementations. For fatal
+exceptions where asynchronous work is unsafe, call `flushSync()` and let the
+supervisor restart the process.
+
+### Delivery failures
+
+Destination and synchronous transport failures are contained. Install
+`onDestinationError` to export an alert and inspect `deliveryStats()` for loss:
+
+```ts
+const logger = new Logger({
+  onDestinationError(event) {
+    deliveryFailureCounter.add(1, {
+      operation: event.operation,
+      droppedRecords: event.droppedRecords
+    })
+  }
+})
+```
+
+The observer is synchronous, reentrancy-guarded, and its own failures are
+contained. Keep it non-blocking and do not use it as a second delivery path.
 
 ## Console bridge
 
-`ConsoleBridge` is separate and opt-in. Installation and restoration are explicit lifecycle transitions.
+`ConsoleBridge` patches only the supplied console instance and owns the exact
+methods needed to restore it.
 
 <!-- example:test console-bridge -->
 
@@ -272,101 +440,180 @@ console.log('structured now')
 bridge.restore()
 ```
 
-`trace`, `debug`, `log`, `info`, `warn`, and `error` map to their corresponding logger levels (`console.log` maps to `info`).
+`trace`, `debug`, `log`, `info`, `warn`, and `error` map to the corresponding
+logger methods; `console.log` maps to `info`. Repeated `install()` and
+`restore()` calls are safe. Restoration does not overwrite another patch that
+replaced a method after installation.
 
 ## Migrating from pino
 
-The output works with NDJSON pipelines such as Loki, Vector, pino-pretty, and parsers that recognize pino numeric levels.
+The default output works with NDJSON pipelines and parsers that recognize pino
+numeric levels.
 
-| pino                                      | swm-log                                     |
-| ----------------------------------------- | ------------------------------------------- |
-| `pino({ level })`                         | `new Logger({ level })`                     |
-| `base`                                    | `bindings`                                  |
-| `customLevels`                            | `customLevels`                              |
-| redact path list                          | `redact` path list                          |
-| `timestamp` fragment function             | `time` returning epoch-ms number            |
-| `pino.destination({ sync: true })`        | immediate mode (default)                    |
-| async SonicBoom destination               | `buffering: true`                           |
-| transports / worker-thread pretty printer | `transports[]`; implementations not bundled |
-| custom serializers                        | keyed `serializers` plus built-in `err`     |
-| hooks / formatters                        | opt-in compiled extension pipeline          |
+| pino                               | `@swarmmachina/swm-logs`                    |
+| ---------------------------------- | ------------------------------------------- |
+| `pino({ level })`                  | `new Logger({ level })`                     |
+| `base`                             | `bindings`                                  |
+| `customLevels`                     | `customLevels` + `log(name, ...)`           |
+| redact path list                   | `redact` path list                          |
+| `timestamp` fragment function      | `time` returning epoch milliseconds         |
+| synchronous destination            | immediate mode (default)                    |
+| asynchronous destination           | `buffering` or an owned transport           |
+| transports / worker pretty printer | `transports[]`; implementations not bundled |
+| custom serializers                 | keyed `serializers` plus built-in `err`     |
+| hooks / formatters                 | opt-in structured extension pipeline        |
 
-Default pino places object fields before `msg`; swm-log follows its documented stable envelope with `msg` first. The compatibility snapshots configure pino's `logMethod` hook to the same field order and compare complete bytes.
+Object-field ordering is intentionally envelope-first, with `msg` before
+bindings and call fields. Compatibility tests compare complete output bytes;
+do not rely on another logger's default key order during migration.
 
-## Performance guidance
+## Performance
 
-Use immediate mode when crash visibility and predictable delivery are more important than peak throughput. Use buffered mode for very high-volume logs, then wire `flushSync()` into fatal/exit handling. Do not enable buffering merely to save a few microseconds: it adds a bounded userspace queue and a delivery lifecycle your application must own.
-
-Local calibration (`darwin/arm64`, Node 24.17.0, benchkit 0.2.0, `/dev/null`, three isolated runs, one warmup, sampled allocations at 32 KiB) produced:
-
-| Scenario                   | swm-log ops/s | pino ops/s | swm p99 ms | pino p99 ms |
-| -------------------------- | ------------: | ---------: | ---------: | ----------: |
-| B1 message                 |     1,286,729 |    991,776 |   0.001681 |    0.001931 |
-| B2 flat fields             |     1,027,411 |    863,262 |   0.001969 |    0.002090 |
-| B3 child + fields          |       868,232 |    806,369 |   0.002218 |    0.002308 |
-| B4 Error + cause           |       399,073 |    401,453 |   0.004180 |    0.004017 |
-| B5 buffered                |     2,931,908 |    543,483 |   0.001200 |    0.003639 |
-| B6 cold ESM import (total) |       2.58 ms |    5.95 ms |          — |           — |
-| B7 wildcard redact         |       690,550 |    546,418 |   0.003106 |    0.003296 |
-
-The separate balanced extension profile (`B2`, four AB/BA runs, 150,000 operations) measured the opt-in cost against the same default swm-log build:
-
-| Extension        |     ops/s | throughput delta |   p99 ms | p99 delta | allocations B/op |
-| ---------------- | --------: | ---------------: | -------: | --------: | ---------------: |
-| no-op hook       |   902,694 |          -13.38% | 0.002308 |   +19.51% |         2,023.81 |
-| formatter        |   906,042 |          -13.30% | 0.002218 |   +14.89% |         1,279.81 |
-| one transport    | 1,064,154 |           +1.95% | 0.001893 |     0.00% |         1,496.81 |
-| three transports | 1,057,999 |           +0.98% | 0.001893 |    -3.86% |         1,560.26 |
-
-The one- and three-transport deltas are within run noise and show no measurable default-path penalty. The three-transport case writes once to `/dev/null` and invokes two additional non-blocking acceptors, isolating fan-out overhead from transport I/O. Structured hooks/formatters pay for one owned record and one merged fields object only when enabled. B7 is intentionally isolated: the fused immutable wildcard path was 27.71% faster than pino-sync in this balanced AB/BA profile, with 10.31% lower paired p99.
-
-These are host-specific measurements, not portable promises. B6 uses cold `import()` because both packages are consumed as ESM. Run the suite on the deployment class instead of copying these numbers:
+Performance numbers are hardware, runtime, destination, and workload specific.
+The repository therefore stores scenario baselines and CI artifacts instead of
+publishing one machine's snapshot as a portable promise.
 
 ```bash
 pnpm bench
 pnpm bench:b1
 pnpm bench:b7
-pnpm profile:compare
 pnpm profile:ci
+pnpm profile:compare
 pnpm profile:extensions
 ```
 
-The harness fixes `connections=1`, `pipelining=1`, uses operation-bound duration (reported per row), isolates every run in a child process, alternates AB/BA, reports median ops/s, p95/p99, ELU, RSS, and sampled allocations/op, and can process V8 profiles with `--v8prof true`. File end-to-end cost is available with `--destination file`.
+The harness covers message-only, flat fields, child bindings, `Error.cause`,
+buffered output, cold ESM import, wildcard redaction, hooks, formatters, and
+transport fan-out. Runs are isolated in child processes, alternate comparison
+order, and report throughput, p95/p99, event-loop utilization, RSS, and sampled
+allocations. Use `--destination file` when storage cost matters.
 
-Committed baselines live in `benchmark/baselines/`; B7 has both an absolute regression floor and a relative competitive guard against pino-sync. Latency ceilings include observed scheduler jitter. Recalibrate before moving the regression gate to another runner class.
+Committed baselines live in `benchmark/baselines/`. Recalibrate them from
+several green runs whenever the Node version, operating system, CPU governor,
+hardware, or benchmark destination changes.
 
-## Testing and release gate
+## Testing
 
 ```bash
 pnpm check
 pnpm test
 pnpm test:e2e
 pnpm test:leak
+pnpm test:types
+pnpm test:package
 pnpm release:gate
 ```
 
-Tests cover pino byte snapshots, Error cause depth/cycles, BigInt and symbols, bounded serialization, serializers, exact/wildcard redact, extension failures, multi-transport fan-out and lifecycle, delivery counters, timer/size/severity flushing, console restoration, packed TypeScript resolution, and the 10,000-line immediate-exit contract. Marked README examples are extracted and executed by the e2e suite.
+The release gate builds the package, checks formatting/lint/source and test
+types, runs unit/e2e/leak tests, installs the packed tarball into a consumer
+fixture, and verifies package metadata and contents. Marked README examples are
+extracted and executed by the e2e suite.
+
+Tests cover output byte compatibility, circular and bounded serialization,
+`Error.cause`, redaction, serializers, extension failures, transport fan-out,
+delivery counters, timer/size/severity flushing, console restoration, packed
+TypeScript resolution, and immediate-exit output.
+
+## Release
+
+CI runs for `v*` tags and manual dispatches. A release tag must equal the
+`package.json` version (`vX.Y.Z`), its commit must belong to `master`, the pnpm
+version must be pinned, and `pnpm-lock.yaml` must match the manifest.
+
+After all correctness and benchmark gates pass, the package job:
+
+1. builds `dist/` from the checked-out commit;
+2. packs exactly once and validates package identity and a strict file allowlist;
+3. writes `release-manifest.json` with size, git SHA, SHA-256, SHA-512, and npm
+   integrity;
+4. uploads the tarball, manifest, checksum, and publish script as one artifact.
+
+The publish job downloads that exact artifact, verifies `SHA256SUMS`, recomputes
+tarball integrity, and queries npm before publishing. Retrying an already
+published identical version succeeds; the same version with different content
+fails closed. Manual dispatch runs every gate and creates the artifact without
+publishing.
+
+Publishing currently uses `NPM_TOKEN` without npm provenance because the GitHub
+repository is private. If the repository becomes public, migrate to npm trusted
+publishing/provenance and remove the long-lived token.
+
+For a local authenticated release, first ensure `release-artifact/` is empty:
+
+```bash
+pnpm release
+```
+
+The output directory is intentionally fail-closed so stale tarballs cannot be
+mixed with a new manifest. Never reuse a published version or release tag.
+
+Rollback moves `latest` to a known-good version and deprecates the bad version:
+
+```bash
+npm dist-tag add @swarmmachina/swm-logs@<GOOD_VERSION> latest
+npm deprecate @swarmmachina/swm-logs@<BAD_VERSION> "Use <GOOD_VERSION>"
+```
+
+### Self-hosted runner
+
+`regression-gate` targets the organization runner group `swm-ci` with the
+`bench` label. The workflow has no pull-request trigger: untrusted PR code must
+not run on a shared self-hosted runner.
+
+Keep the benchmark runner isolated and disposable, run it as an unprivileged
+user, allow only required outbound traffic, and expose no production secrets.
+Prefer ephemeral registration so every release starts from a clean machine:
+
+```bash
+./config.sh --url https://github.com/<owner>/<repo> --token <RUNNER_TOKEN> --labels bench --ephemeral
+sudo ./svc.sh install <user>
+sudo ./svc.sh start
+```
+
+Keep the host idle during profiles and use a stable performance governor where
+the platform supports it.
 
 ## Runtime design
 
-- `Logger` owns only per-instance bindings/filter state and composes the shared components below.
+- `Logger` owns per-instance bindings and level state.
 - `LevelRegistry` owns validated immutable level lookup tables.
-- Argument/message normalization remains a pure function.
-- `FieldSerializer` owns field/redact/serializer configuration and is shared by children.
-- `Redactor` owns the compiled single-path or trie strategy without mutating caller data.
+- `FieldSerializer` owns serializers/redaction configuration and is shared by
+  children.
+- `Redactor` owns the compiled single-path or branch-trie strategy without
+  mutating caller data.
 - `OutputDestination` owns one stdout/stderr/fd/writer target.
-- `ExtensionPipeline` exists only for a logger configured with hooks or a formatter.
-- `OutputPipeline` owns console/transport fan-out and their shared lifecycle.
-- `DeliveryMonitor` owns reentrancy-safe failure notification and shared counters.
-- `BufferedWriter` owns the opt-in console queue; `OutputPipeline` handles immediate delivery directly.
+- `ExtensionPipeline` exists only when hooks or a formatter are configured.
+- `OutputPipeline` owns destination/transport fan-out, lifecycle, and shared
+  delivery counters.
+- `BufferedWriter` owns the opt-in bounded console queue and timer.
 - `ConsoleBridge` owns installation and restoration of global console methods.
-- Redact-path parsing and normal/fused JSON stringifiers remain pure functions.
-- Runtime dependency count is zero.
+- Argument parsing and JSON transformations remain pure functions.
+
+There is no hidden worker, retry loop, global singleton, or asynchronous queue
+in the default path. External resource owners stay explicit at the transport
+boundary.
 
 ## Stability
 
-The package is experimental at `0.x`. The NDJSON envelope and numeric levels are intended to stabilize first; benchmark baselines remain runner-specific.
+The package is experimental at `0.x`. Public APIs and runtime behavior may
+change before a stable release. The NDJSON envelope and numeric levels are
+intended to stabilize first; benchmark baselines remain runner-specific.
+
+## Contributing
+
+Contributions should include tests for behavior changes and benchmark evidence
+for hot-path changes.
+
+1. Fork the repository.
+2. Create a feature branch.
+3. Run `pnpm release:gate` and the relevant performance profile.
+4. Commit and push the branch.
+5. Open a pull request.
 
 ## License
 
-Mozilla Public License 2.0. See [LICENSE](./LICENSE).
+Licensed under the MPL-2.0 License.
+
+Copyright Contributors to SwarmMachina.
+
+See [LICENSE](LICENSE) for details.

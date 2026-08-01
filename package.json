@@ -46,8 +46,8 @@
     "check": "prettier . --check && eslint . && tsc --project tsconfig.json && tsc --project tsconfig.test.json",
     "fix": "eslint . --fix && prettier . --write",
     "test": "pnpm build && pnpm test:unit",
-    "test:unit": "node --experimental-strip-types --test tests/unit/*.test.ts",
-    "test:coverage": "node --experimental-strip-types --test --experimental-test-coverage tests/unit/*.test.ts",
+    "test:unit": "node --experimental-strip-types --test tests/unit/*.test.*",
+    "test:coverage": "node --experimental-strip-types --test --experimental-test-coverage tests/unit/*.test.*",
     "test:e2e": "pnpm build && node --experimental-strip-types --test tests/e2e/*.test.ts",
     "test:leak": "node --experimental-strip-types --expose-gc --test tests/leak/*.leak.test.ts",
     "test:readme": "node --experimental-strip-types --test tests/e2e/readme.test.ts",
@@ -65,8 +65,10 @@
     "profile:compare": "pnpm build && pnpm build:benchmark && node benchmark/profile-compare.js",
     "profile:extensions": "pnpm build && pnpm build:benchmark && node benchmark/profile-extensions.js",
     "release:verify-tag": "node scripts/verify-release.js",
+    "release:artifact": "node scripts/build-release-artifact.js",
     "release:gate": "pnpm build && pnpm check && pnpm test:unit && node --experimental-strip-types --test tests/e2e/*.test.ts && pnpm test:leak && pnpm test:types && pnpm test:package",
-    "prepublishOnly": "pnpm release:gate"
+    "prepublishOnly": "pnpm release:gate",
+    "release": "pnpm release:gate && pnpm release:artifact && node release-artifact/publish-release-artifact.js"
   },
   "devDependencies": {
     "@swarmmachina/benchkit": "^0.2.0",

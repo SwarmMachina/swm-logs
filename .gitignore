@@ -29,4 +29,5 @@ benchmark/profiles/
 benchmark/**/*.js
 benchmark/**/*.d.ts
 benchmark/**/*.map
+/release-artifact/
 *.log

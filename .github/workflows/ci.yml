@@ -1,10 +1,7 @@
 name: CI
 
 on:
-  pull_request:
   push:
-    branches:
-      - master
     tags:
       - 'v*'
   workflow_dispatch:
@@ -19,22 +16,31 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Verify workflow commit belongs to master
+
+      - name: Setup pnpm
         if: startsWith(github.ref, 'refs/tags/v')
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+
+      - name: Verify workflow commit belongs to master
         run: git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/master
+
       - name: Setup release policy runtime
         if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/setup-node@v6
         with:
           node-version: '22'
+
       - name: Verify release tag matches package version
         if: startsWith(github.ref, 'refs/tags/v')
-        run: node scripts/verify-release.js "$GITHUB_REF_NAME"
+        run: pnpm release:verify-tag "$GITHUB_REF_NAME"
 
   test:
     runs-on: ubuntu-latest
@@ -46,34 +52,45 @@ jobs:
         node-version: ['22', '24']
     permissions:
       contents: read
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 11.15.1
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
+
       - name: Install
         run: pnpm install --frozen-lockfile
+
       - name: Build
         run: pnpm build
+
       - name: Formatting, lint, and source types
         if: matrix.node-version == '22'
         run: pnpm check
+
       - name: Unit tests
         run: pnpm test:unit
+
       - name: End-to-end tests
         run: node --experimental-strip-types --test tests/e2e/*.test.ts
+
       - name: Leak tests
         run: pnpm test:leak
+
       - name: Packed consumer type resolution
         if: matrix.node-version == '22'
         run: pnpm test:types
+
       - name: Package metadata and contents
         if: matrix.node-version == '22'
         run: pnpm test:package
@@ -86,26 +103,34 @@ jobs:
     needs: test
     permissions:
       contents: read
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 11.15.1
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: pnpm
+
       - name: Install
         run: pnpm install --frozen-lockfile
+
       - name: Regression profile
         run: pnpm profile:ci
+
       - name: Balanced pino comparison
         run: pnpm profile:compare
+
       - name: Extension and wildcard regression profile
         run: pnpm profile:extensions
+
       - name: Upload profiles
         if: always()
         continue-on-error: true
@@ -114,30 +139,70 @@ jobs:
           name: benchmark-profiles
           path: benchmark/profiles/
 
-  publish:
+  package:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: regression-gate
-    if: success() && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read
-      id-token: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 11.15.1
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build package
+        run: pnpm build
+
+      - name: Build immutable release artifact
+        run: pnpm release:artifact
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-package
+          path: release-artifact/
+          if-no-files-found: error
+
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: package
+    if: success() && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+
+    steps:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
-          cache: pnpm
-      - name: Install
-        run: pnpm install --frozen-lockfile
+
+      - name: Download verified release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-package
+          path: release-artifact/
+
+      - name: Verify release artifact checksum
+        working-directory: release-artifact
+        run: sha256sum --check SHA256SUMS
+
       - name: Publish
-        run: npm publish --access public
+        run: node release-artifact/publish-release-artifact.js
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
