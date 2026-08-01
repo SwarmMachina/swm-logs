@@ -2,6 +2,7 @@ import { appendStepSummary, mdTable } from '@swarmmachina/benchkit/reporting'
 
 import { runBenchmark } from './bench.js'
 import { compareBenchmarkRuns } from './paired-benchmark-comparison.js'
+import { writeBenchmarkProfile } from './profile-output.js'
 import type { ScenarioName } from './types.js'
 
 const runs = 4
@@ -52,4 +53,9 @@ const markdown = [
   ''
 ].join('\n')
 
+await writeBenchmarkProfile('comparison.json', { comparisons, result })
 await appendStepSummary(markdown)
+
+if (process.env.GITHUB_ACTIONS === 'true') {
+  console.log(markdown)
+}

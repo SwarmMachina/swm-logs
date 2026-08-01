@@ -10,12 +10,12 @@
     "framework": "swm-log"
   },
   "calibration": {
-    "status": "local-calibrated",
-    "updatedAt": "2026-07-30",
-    "node": "24.17.0",
+    "status": "ci-runner-calibrated",
+    "updatedAt": "2026-08-01",
+    "node": "24",
     "benchkit": "0.2.0",
-    "ciRunner": "macOS arm64 local development host",
-    "note": "Calibrated from isolated local series. Throughput floors and p99, RSS, and sampled-allocation ceilings include observed jitter. Recalibrate these host-specific bounds before enabling a different dedicated CI runner."
+    "ciRunner": "dedicated swm-ci Linux x64 runner",
+    "note": "Throughput and latency guards are calibrated from repeated isolated runs on the dedicated release runner. RSS and sampled-allocation ceilings retain the conservative bounds that passed on that runner. Recalibrate before changing runner hardware."
   },
   "parameters": {
     "runs": 3,
@@ -35,55 +35,55 @@
   "tests": {
     "b1": {
       "observedMedian": {
-        "operationsPerSecond": 1285500,
-        "p99Ms": 0.001681,
+        "operationsPerSecond": 520770,
+        "p99Ms": 0.004801256,
         "rssPeakMiB": 68.95,
         "allocationBytesPerOperation": 742.25
       },
       "guards": {
-        "operationsPerSecond": { "min": 985472 },
-        "p99Ms": { "max": 0.002664 },
+        "operationsPerSecond": { "min": 399225 },
+        "p99Ms": { "max": 0.007608891 },
         "rssPeakMiB": { "max": 84 },
         "allocationBytesPerOperation": { "max": 890 }
       }
     },
     "b2": {
       "observedMedian": {
-        "operationsPerSecond": 1013434,
-        "p99Ms": 0.002049,
+        "operationsPerSecond": 391828,
+        "p99Ms": 0.005737945,
         "rssPeakMiB": 69.08,
         "allocationBytesPerOperation": 1472.94
       },
       "guards": {
-        "operationsPerSecond": { "min": 751473 },
-        "p99Ms": { "max": 0.004546 },
+        "operationsPerSecond": { "min": 290544 },
+        "p99Ms": { "max": 0.012730454 },
         "rssPeakMiB": { "max": 83 },
         "allocationBytesPerOperation": { "max": 1873 }
       }
     },
     "b3": {
       "observedMedian": {
-        "operationsPerSecond": 847006,
-        "p99Ms": 0.002449,
+        "operationsPerSecond": 317625,
+        "p99Ms": 0.007064469,
         "rssPeakMiB": 80.73,
         "allocationBytesPerOperation": 1974.37
       },
       "guards": {
-        "operationsPerSecond": { "min": 663281 },
-        "p99Ms": { "max": 0.004458 },
+        "operationsPerSecond": { "min": 248728 },
+        "p99Ms": { "max": 0.012859698 },
         "rssPeakMiB": { "max": 97 },
         "allocationBytesPerOperation": { "max": 2543 }
       }
     },
     "b4": {
       "observedMedian": {
-        "operationsPerSecond": 408637,
+        "operationsPerSecond": 162995,
         "p99Ms": 0.004263,
         "rssPeakMiB": 69.84,
         "allocationBytesPerOperation": 4658.16
       },
       "guards": {
-        "operationsPerSecond": { "min": 288232 },
+        "operationsPerSecond": { "min": 114968 },
         "p99Ms": { "max": 0.013511 },
         "rssPeakMiB": { "max": 84 },
         "allocationBytesPerOperation": { "max": 5007 }
@@ -91,28 +91,28 @@
     },
     "b5": {
       "observedMedian": {
-        "operationsPerSecond": 2761709,
-        "p99Ms": 0.001379,
+        "operationsPerSecond": 1074623,
+        "p99Ms": 0.00329573,
         "rssPeakMiB": 136.55,
         "allocationBytesPerOperation": 1071.34
       },
       "guards": {
-        "operationsPerSecond": { "min": 1748286 },
-        "p99Ms": { "max": 0.002717 },
+        "operationsPerSecond": { "min": 680284 },
+        "p99Ms": { "max": 0.006493472 },
         "rssPeakMiB": { "max": 164 },
         "allocationBytesPerOperation": { "max": 1301 }
       }
     },
     "b7": {
       "observedMedian": {
-        "operationsPerSecond": 669070,
-        "p99Ms": 0.003231,
+        "operationsPerSecond": 238959,
+        "p99Ms": 0.009794021,
         "rssPeakMiB": 79.8,
         "allocationBytesPerOperation": 3227.05
       },
       "guards": {
-        "operationsPerSecond": { "min": 500000 },
-        "p99Ms": { "max": 0.006 },
+        "operationsPerSecond": { "min": 178575 },
+        "p99Ms": { "max": 0.018187598 },
         "rssPeakMiB": { "max": 96 },
         "allocationBytesPerOperation": { "max": 4100 }
       }

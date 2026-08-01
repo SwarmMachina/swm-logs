@@ -2,6 +2,7 @@ import { appendStepSummary, mdTable } from '@swarmmachina/benchkit/reporting'
 
 import { runBenchmark } from './bench.js'
 import { compareBenchmarkRuns } from './paired-benchmark-comparison.js'
+import { writeBenchmarkProfile } from './profile-output.js'
 import type { BenchmarkMedianRow, BenchmarkRunRow, ImplementationName } from './types.js'
 
 const runs = 4
@@ -75,7 +76,16 @@ const markdown = [
   ''
 ].join('\n')
 
+await writeBenchmarkProfile('extensions.json', {
+  extensionRows,
+  wildcard: wildcardComparison,
+  wildcardFailures
+})
 await appendStepSummary(markdown)
+
+if (process.env.GITHUB_ACTIONS === 'true') {
+  console.log(markdown)
+}
 
 if (wildcardFailures.length > 0) {
   for (const failure of wildcardFailures) {

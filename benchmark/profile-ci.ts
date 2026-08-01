@@ -5,6 +5,7 @@ import { metricGuard } from '@swarmmachina/benchkit/regression'
 import { appendStepSummary, mdTable } from '@swarmmachina/benchkit/reporting'
 
 import { runBenchmark } from './bench.js'
+import { writeBenchmarkProfile } from './profile-output.js'
 import type { LoggerBenchmarkResult, ScenarioName } from './types.js'
 
 interface LoggerBaselineTest {
@@ -76,7 +77,19 @@ const markdown = [
   ''
 ].join('\n')
 
+await writeBenchmarkProfile('regression.json', {
+  baseline: baselineJson,
+  guard: {
+    failures: guard.failures,
+    rows: guard.rows
+  },
+  result
+})
 await appendStepSummary(markdown)
+
+if (process.env.GITHUB_ACTIONS === 'true') {
+  console.log(markdown)
+}
 
 if (guard.failures.length > 0) {
   for (const failure of guard.failures) {
