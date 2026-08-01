@@ -1,13 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import Logger, { type LoggerOptions } from '../../dist/index.js'
+import Logger from '../../dist/index.js'
+import { invalidLoggerOptions } from '../helpers/invalid-logger-options.ts'
 import { MemoryDestination } from '../helpers/memory-destination.ts'
-
-/** Crosses the type boundary intentionally to exercise runtime validation. */
-function invalidOptions(options: unknown): LoggerOptions {
-  return options as LoggerOptions
-}
 
 test('redacts existing paths without mutating caller data', () => {
   const destination = new MemoryDestination()
@@ -63,7 +59,13 @@ test('child bindings are redacted during their one-time serialization', () => {
 })
 
 test('invalid paths fail during configuration', () => {
-  assert.throws(() => new Logger(invalidOptions({ redact: 'token' })), /array or an object/)
+  assert.throws(() => new Logger(invalidLoggerOptions({ redact: 'token' })), /array or an object/)
+  assert.throws(() => new Logger(invalidLoggerOptions({ redact: null })), /array or an object/)
+  assert.throws(() => new Logger(invalidLoggerOptions({ redact: { paths: 'token' } })), /paths must be an array/)
+  assert.throws(
+    () => new Logger(invalidLoggerOptions({ redact: { censor: 42, paths: ['token'] } })),
+    /censor must be a string or function/
+  )
   assert.throws(() => new Logger({ redact: ['req..token'] }), /empty path segment/)
   assert.throws(() => new Logger({ redact: [''] }), /non-empty string/)
 })

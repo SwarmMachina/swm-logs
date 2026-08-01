@@ -1,15 +1,16 @@
 import { DEFAULT_DEPTH_LIMIT, DEFAULT_EDGE_LIMIT } from '../constants.js'
 import type { RedactCensor } from '../types.js'
+import { isFunction, isObject } from '../validation.js'
 import { quoteString } from './quote-string.js'
 import { stringifyJsonValue, type SafeStringifyOptions } from './safe-stringify.js'
 
 /** Requests clone-first redaction when a selected branch owns custom JSON behavior. */
-export const REDACT_STRINGIFY_FALLBACK = Symbol('redact-stringify-fallback')
+const REDACT_STRINGIFY_FALLBACK = Symbol('redact-stringify-fallback')
 
 type RedactedStringifyResult = string | undefined | typeof REDACT_STRINGIFY_FALLBACK
 
 /** Precompiled single-path redaction state consumed by the fused serializer. */
-export interface RedactedStringifyConfig {
+interface RedactedStringifyConfig {
   censor: string | RedactCensor
   remove: boolean
   segments: readonly RedactedStringifySegment[]
@@ -17,13 +18,13 @@ export interface RedactedStringifyConfig {
 }
 
 /** One exact or wildcard branch in a precompiled redact path. */
-export interface RedactedStringifySegment {
+interface RedactedStringifySegment {
   key: string
   wildcard: boolean
 }
 
 /** Serializes and redacts one nested value without cloning it first. */
-export function safeStringifyRedacted(
+function safeStringifyRedacted(
   value: unknown,
   options: SafeStringifyOptions,
   config: RedactedStringifyConfig,
@@ -63,19 +64,18 @@ function stringifyRedactedJsonValue(
       return config.staticCensorJson
     }
 
-    const replacement =
-      typeof config.censor === 'function' ? config.censor(value, path === null ? [] : [...path]) : config.censor
+    const replacement = isFunction(config.censor) ? config.censor(value, path === null ? [] : [...path]) : config.censor
 
     return stringifyJsonValue(replacement, key, depth, depthLimit, edgeLimit, ancestors)
   }
 
-  if (value === null || typeof value !== 'object') {
+  if (!isObject(value)) {
     return stringifyJsonValue(value, key, depth, depthLimit, edgeLimit, ancestors)
   }
 
   const toJSON = (value as { toJSON?: (key: string) => unknown }).toJSON
 
-  if (typeof toJSON === 'function') {
+  if (isFunction(toJSON)) {
     return REDACT_STRINGIFY_FALLBACK
   }
 
@@ -255,3 +255,6 @@ function stringifyRedactedRecord(
 
   return `${output}}`
 }
+
+export { REDACT_STRINGIFY_FALLBACK, safeStringifyRedacted }
+export type { RedactedStringifyConfig, RedactedStringifySegment }

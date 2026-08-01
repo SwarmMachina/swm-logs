@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { readFileSync, rmSync } from 'node:fs'
 
-import { makeTempDir, pack, root } from './package-test-helpers.js'
+import { makeTempDir, pack } from './package-test-helpers.js'
+import { root } from './project-root.js'
 
 const temporaryDirectory = makeTempDir('swm-log-package-')
 
@@ -26,6 +27,9 @@ try {
 
   assert.equal(files.has('tests/unit/logger.test.ts'), false, 'tarball must not contain tests')
   assert.equal(files.has('benchmark/bench.js'), false, 'tarball must not contain benchmarks')
+  assert.equal(manifest.name, '@swarmmachina/swm-logs')
+  assert.equal(manifest.repository.url, 'git+https://github.com/SwarmMachina/swm-logs.git')
+  assert.equal(manifest.publishConfig.access, 'public')
   assert.deepEqual(manifest.dependencies, undefined, 'package must have zero runtime dependencies')
   assert.equal(manifest.exports['.'].types, './dist/index.d.ts')
   assert.equal(manifest.exports['.'].import, './dist/index.js')

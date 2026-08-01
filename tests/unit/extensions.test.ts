@@ -1,13 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import Logger, { type LoggerOptions, type LogTransport } from '../../dist/index.js'
+import Logger, { type LogTransport } from '../../dist/index.js'
+import { invalidLoggerOptions } from '../helpers/invalid-logger-options.ts'
 import { MemoryDestination } from '../helpers/memory-destination.ts'
-
-/** Crosses the type boundary intentionally to exercise runtime validation. */
-function invalidOptions(options: unknown): LoggerOptions {
-  return options as LoggerOptions
-}
 
 test('beforeFormat hooks enrich owned records and preserve binding snapshots', () => {
   const destination = new MemoryDestination()
@@ -220,12 +216,12 @@ test('one synchronous transport failure does not block later transports', () => 
 })
 
 test('extension configuration is validated once during construction', () => {
-  assert.throws(() => new Logger(invalidOptions({ formatter: 'pretty' })), /formatter/)
-  assert.throws(() => new Logger(invalidOptions({ hooks: null })), /hooks/)
-  assert.throws(() => new Logger(invalidOptions({ hooks: [] })), /hooks must be an object/)
-  assert.throws(() => new Logger(invalidOptions({ hooks: { beforeFormat: [null] } })), /beforeFormat/)
-  assert.throws(() => new Logger(invalidOptions({ transports: {} })), /transports must be an array/)
-  assert.throws(() => new Logger(invalidOptions({ transports: [{}] })), /transports\[0\]/)
+  assert.throws(() => new Logger(invalidLoggerOptions({ formatter: 'pretty' })), /formatter/)
+  assert.throws(() => new Logger(invalidLoggerOptions({ hooks: null })), /hooks/)
+  assert.throws(() => new Logger(invalidLoggerOptions({ hooks: [] })), /hooks must be an object/)
+  assert.throws(() => new Logger(invalidLoggerOptions({ hooks: { beforeFormat: [null] } })), /beforeFormat/)
+  assert.throws(() => new Logger(invalidLoggerOptions({ transports: {} })), /transports must be an array/)
+  assert.throws(() => new Logger(invalidLoggerOptions({ transports: [{}] })), /transports\[0\]/)
 })
 
 test('async transport lifecycle can be awaited and rejected work is contained', async () => {

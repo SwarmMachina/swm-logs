@@ -1,16 +1,16 @@
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, join, resolve } from 'node:path'
+import { basename, join } from 'node:path'
 
-export const root = resolve(import.meta.dirname, '..')
+import { root } from './project-root.js'
 
 /**
  * Creates an owned temporary directory for package verification.
  * @param {string} prefix
  * @returns {string}
  */
-export function makeTempDir(prefix) {
+function makeTempDir(prefix) {
   return mkdtempSync(join(tmpdir(), prefix))
 }
 
@@ -19,7 +19,7 @@ export function makeTempDir(prefix) {
  * @param {string} destination
  * @returns {{ filename: string, files: Array<{ path: string }>, path: string }}
  */
-export function pack(destination) {
+function pack(destination) {
   const output = execFileSync('pnpm', ['pack', '--json', '--pack-destination', destination], {
     cwd: root,
     encoding: 'utf8'
@@ -28,3 +28,5 @@ export function pack(destination) {
 
   return { ...result, path: join(destination, basename(result.filename)) }
 }
+
+export { makeTempDir, pack }

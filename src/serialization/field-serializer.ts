@@ -1,6 +1,6 @@
 import type { LogSerializers, RedactOptions } from '../types.js'
 import { isFunction, isRecord } from '../validation.js'
-import { assignOwnValue, hasOwn } from './own-property.js'
+import { assignOwnValue } from './own-property.js'
 import { quoteString } from './quote-string.js'
 import { REDACT_NOT_APPLICABLE, Redactor } from './redact.js'
 import { normalizeError, safeStringify, safeStringifyError, type SafeStringifyOptions } from './safe-stringify.js'
@@ -44,7 +44,7 @@ function serializeValue(value: unknown, options: SafeStringifyOptions): string |
 }
 
 function serializeField(key: string, value: unknown, options: CompiledFieldSerializerOptions): string | undefined {
-  if (options.serializers !== null && hasOwn(options.serializers, key)) {
+  if (options.serializers !== null && Object.hasOwn(options.serializers, key)) {
     return serializeValue(options.serializers[key]!(value), options)
   }
 
@@ -139,7 +139,7 @@ class FieldSerializer {
 
       const value = source[key]
       const prepared =
-        options.serializers !== null && hasOwn(options.serializers, key)
+        options.serializers !== null && Object.hasOwn(options.serializers, key)
           ? options.serializers[key]!(value)
           : key === 'err' && value instanceof Error
             ? normalizeError(value, options.errorCauseDepth, options)

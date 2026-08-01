@@ -1,5 +1,5 @@
 /** One exact or wildcard segment in a parsed redact path. */
-export interface PathSegment {
+interface PathSegment {
   key: string
   wildcard: boolean
 }
@@ -17,7 +17,7 @@ const SINGLE_QUOTE_ESCAPES: Readonly<Record<string, string>> = Object.freeze({
 })
 
 /** Parses a dot/bracket redact path without code generation. */
-export function parseRedactPath(path: unknown): PathSegment[] {
+function parseRedactPath(path: unknown): PathSegment[] {
   if (typeof path !== 'string' || path.length === 0) {
     throw new TypeError('each redact path must be a non-empty string')
   }
@@ -153,3 +153,6 @@ function parseSingleQuoted(raw: string, path: string): string {
 
   return body.replace(/\\(['\\bnrtvf0])/gu, (_match, token: string) => SINGLE_QUOTE_ESCAPES[token]!)
 }
+
+export { parseRedactPath }
+export type { PathSegment }

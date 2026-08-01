@@ -1,5 +1,5 @@
 {
-  "name": "@swarmmachina/swm-log",
+  "name": "@swarmmachina/swm-logs",
   "version": "0.1.0",
   "description": "Zero-dependency structured JSON logger for Node.js",
   "keywords": [
@@ -35,7 +35,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SwarmMachina/swm-log.git"
+    "url": "git+https://github.com/SwarmMachina/swm-logs.git"
   },
   "publishConfig": {
     "access": "public"

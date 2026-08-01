@@ -47,6 +47,10 @@ function normalizeBuffering(
   }
 }
 
+function settlePending(pending: Promise<void>[]): void | Promise<void> {
+  return pending.length === 0 ? undefined : Promise.all(pending).then(() => undefined)
+}
+
 /** Owns the configured output graph, its lifecycle, and shared delivery counters. */
 class OutputPipeline {
   readonly #immediateDestination: OutputDestination | null
@@ -118,9 +122,7 @@ class OutputPipeline {
       this.#collectFlush(output, pending)
     }
 
-    if (pending.length > 0) {
-      return Promise.all(pending).then(() => undefined)
-    }
+    return settlePending(pending)
   }
 
   flushSync(): void {
@@ -136,9 +138,7 @@ class OutputPipeline {
       this.#collectClose(output, pending)
     }
 
-    if (pending.length > 0) {
-      return Promise.all(pending).then(() => undefined)
-    }
+    return settlePending(pending)
   }
 
   deliveryStats(): DeliveryStats {

@@ -1,9 +1,9 @@
 import { writeSync } from 'node:fs'
 
-import type { LogTransport } from '@swarmmachina/swm-log'
+import type { LogTransport } from '@swarmmachina/swm-logs'
 
 /** Minimal external transport used to isolate the transport-port overhead. */
-export class FdTransport implements LogTransport {
+class FdTransport implements LogTransport {
   readonly #fd: number
 
   constructor(fd: number) {
@@ -16,3 +16,5 @@ export class FdTransport implements LogTransport {
 
   flushSync(): void {}
 }
+
+export { FdTransport }

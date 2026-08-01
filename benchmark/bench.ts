@@ -4,6 +4,7 @@ import { parseArgs } from '@swarmmachina/benchkit/orchestration'
 import { appendStepSummary, mdTable } from '@swarmmachina/benchkit/reporting'
 
 import { BenchmarkRunner, type BenchmarkRunnerOptions } from './benchmark-runner.js'
+import { commaSeparatedValues, nonNegativeInteger, positiveInteger } from './cli-values.js'
 import type { ImplementationName, LoggerBenchmarkResult, ScenarioName } from './types.js'
 
 interface CliOptions extends BenchmarkRunnerOptions {
@@ -11,7 +12,7 @@ interface CliOptions extends BenchmarkRunnerOptions {
 }
 
 /** Runs the benchmark and guarantees temporary-file cleanup. */
-export async function runBenchmark(options: BenchmarkRunnerOptions): Promise<LoggerBenchmarkResult> {
+async function runBenchmark(options: BenchmarkRunnerOptions): Promise<LoggerBenchmarkResult> {
   const runner = new BenchmarkRunner(options)
 
   try {
@@ -22,7 +23,7 @@ export async function runBenchmark(options: BenchmarkRunnerOptions): Promise<Log
 }
 
 /** Renders the stable console/GitHub summary table. */
-export function renderBenchmark(result: LoggerBenchmarkResult): string {
+function renderBenchmark(result: LoggerBenchmarkResult): string {
   const parameters = [
     `runs=${result.parameters.runs}`,
     `warmup=${result.parameters.warmup}`,
@@ -77,7 +78,7 @@ function parseCli(argv: string[]): CliOptions {
         out.destination = value
       },
       '--implementations': (out, value) => {
-        out.implementations = splitList(value) as ImplementationName[]
+        out.implementations = commaSeparatedValues(value) as ImplementationName[]
       },
       '--json-out': (out, value) => {
         out.jsonOut = value ?? null
@@ -90,7 +91,7 @@ function parseCli(argv: string[]): CliOptions {
       },
       '--scenario': (out, value) => {
         out.scenarios =
-          value === 'all' ? ['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7'] : (splitList(value) as ScenarioName[])
+          value === 'all' ? ['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7'] : (commaSeparatedValues(value) as ScenarioName[])
       },
       '--v8prof': (out, value) => {
         out.v8prof = value === 'true'
@@ -101,37 +102,6 @@ function parseCli(argv: string[]): CliOptions {
     },
     { offset: 2, strict: true }
   )
-}
-
-function splitList(value: string | undefined): string[] {
-  if (value === undefined || value.length === 0) {
-    throw new TypeError('list value is required')
-  }
-
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-}
-
-function positiveInteger(value: string | undefined, label: string): number {
-  const parsed = Number(value)
-
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new TypeError(`${label} must be a positive integer`)
-  }
-
-  return parsed
-}
-
-function nonNegativeInteger(value: string | undefined, label: string): number {
-  const parsed = Number(value)
-
-  if (!Number.isSafeInteger(parsed) || parsed < 0) {
-    throw new TypeError(`${label} must be a non-negative integer`)
-  }
-
-  return parsed
 }
 
 const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href
@@ -147,3 +117,5 @@ if (isMain) {
     await writeFile(cli.jsonOut, `${JSON.stringify(result, null, 2)}\n`)
   }
 }
+
+export { renderBenchmark, runBenchmark }

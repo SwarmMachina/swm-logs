@@ -3,7 +3,7 @@
   "suite": "logger",
   "benchmark": {
     "name": "swm-log-core-ci",
-    "packageName": "@swarmmachina/swm-log",
+    "packageName": "@swarmmachina/swm-logs",
     "packageVersion": "0.1.0",
     "runner": "benchmark/profile-ci.ts",
     "script": "pnpm profile:ci",

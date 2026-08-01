@@ -1,11 +1,11 @@
 import type { RedactCensor, RedactOptions } from '../types.js'
-import { assignOwnValue, hasOwn } from './own-property.js'
+import { isFunction, isObject } from '../validation.js'
+import { cloneContainer } from './clone-container.js'
+import { assignOwnValue } from './own-property.js'
 import { RedactNode } from './redact-node.js'
 import { parseRedactPath, type PathSegment } from './redact-path.js'
 import { REDACT_NOT_APPLICABLE, SinglePathRedactor } from './single-path-redactor.js'
 import type { SafeStringifyOptions } from './safe-stringify.js'
-
-export { REDACT_NOT_APPLICABLE } from './single-path-redactor.js'
 
 interface RedactResult {
   changed: boolean
@@ -16,65 +16,6 @@ interface RedactResult {
 interface RedactPolicy {
   censor: string | RedactCensor
   remove: boolean
-}
-
-/**
- * Owns compiled exact/wildcard redaction behavior.
- *
- * A single path receives a fused JSON serializer. Multiple paths use a branch
- * trie. Neither strategy mutates caller-owned values.
- */
-export class Redactor {
-  readonly #policy: RedactPolicy
-  readonly #root: RedactNode | null
-  readonly #singlePath: SinglePathRedactor | null
-
-  /** Parses and compiles configuration once, outside the logging hot path. */
-  constructor(config: readonly string[] | RedactOptions) {
-    const { paths, policy } = normalizeConfig(config)
-    const parsedPaths = paths.map(parseRedactPath)
-
-    this.#policy = policy
-
-    if (parsedPaths.length === 1) {
-      this.#root = null
-      this.#singlePath = new SinglePathRedactor({ ...policy, segments: parsedPaths[0]! })
-
-      return
-    }
-
-    this.#root = compileTrie(parsedPaths)
-    this.#singlePath = null
-  }
-
-  /** Returns whether fields can be redacted during JSON serialization. */
-  get supportsFusedSerialization(): boolean {
-    return this.#singlePath !== null
-  }
-
-  /** Redacts a value immutably. */
-  redact(value: unknown): unknown {
-    if (this.#singlePath !== null) {
-      return this.#singlePath.redact(value)
-    }
-
-    const root = this.#root!
-
-    if (root.children.size === 0 && root.wildcard === null) {
-      return value
-    }
-
-    return redactBranch(value, root, this.#policy, []).value
-  }
-
-  /** Serializes one top-level field through the fused single-path strategy. */
-  serializeField(
-    key: string,
-    value: unknown,
-    options: SafeStringifyOptions
-  ): string | undefined | typeof REDACT_NOT_APPLICABLE {
-    return this.#singlePath === null ? REDACT_NOT_APPLICABLE : this.#singlePath.serializeField(key, value, options)
-  }
 }
 
 function compileTrie(paths: readonly (readonly PathSegment[])[]): RedactNode {
@@ -119,7 +60,7 @@ function normalizeConfig(config: readonly string[] | RedactOptions): {
     return { paths: config, policy: { censor: '[Redacted]', remove: false } }
   }
 
-  if (config === null || typeof config !== 'object') {
+  if (!isObject(config)) {
     throw new TypeError('options.redact must be an array or an object with paths')
   }
 
@@ -133,7 +74,7 @@ function normalizeConfig(config: readonly string[] | RedactOptions): {
     throw new TypeError('options.redact.remove must be a boolean')
   }
 
-  if (options.censor !== undefined && typeof options.censor !== 'string' && typeof options.censor !== 'function') {
+  if (options.censor !== undefined && typeof options.censor !== 'string' && !isFunction(options.censor)) {
     throw new TypeError('options.redact.censor must be a string or function')
   }
 
@@ -149,7 +90,7 @@ function redactBranch(
   policy: RedactPolicy,
   path: string[]
 ): RedactResult {
-  if (value === null || typeof value !== 'object') {
+  if (!isObject(value)) {
     return { changed: false, value }
   }
 
@@ -163,7 +104,7 @@ function redactBranch(
   let clone: Record<string, unknown> | unknown[] | undefined
 
   for (const key of keys) {
-    if (!hasOwn(record, key)) {
+    if (!Object.hasOwn(record, key)) {
       continue
     }
 
@@ -201,7 +142,7 @@ function redactMatch(
       return { changed: true, removed: true, value: undefined }
     }
 
-    const replacement = typeof policy.censor === 'function' ? policy.censor(value, [...path, key]) : policy.censor
+    const replacement = isFunction(policy.censor) ? policy.censor(value, [...path, key]) : policy.censor
 
     return { changed: true, value: replacement }
   }
@@ -283,6 +224,63 @@ function matchingChildren(nodes: readonly RedactNode[], key: string): RedactNode
   return matches
 }
 
-function cloneContainer(value: Record<string, unknown>): Record<string, unknown> | unknown[] {
-  return Array.isArray(value) ? [...value] : { ...value }
+/**
+ * Owns compiled exact/wildcard redaction behavior.
+ *
+ * A single path receives a fused JSON serializer. Multiple paths use a branch
+ * trie. Neither strategy mutates caller-owned values.
+ */
+class Redactor {
+  readonly #policy: RedactPolicy
+  readonly #root: RedactNode | null
+  readonly #singlePath: SinglePathRedactor | null
+
+  /** Parses and compiles configuration once, outside the logging hot path. */
+  constructor(config: readonly string[] | RedactOptions) {
+    const { paths, policy } = normalizeConfig(config)
+    const parsedPaths = paths.map(parseRedactPath)
+
+    this.#policy = policy
+
+    if (parsedPaths.length === 1) {
+      this.#root = null
+      this.#singlePath = new SinglePathRedactor({ ...policy, segments: parsedPaths[0]! })
+
+      return
+    }
+
+    this.#root = compileTrie(parsedPaths)
+    this.#singlePath = null
+  }
+
+  /** Returns whether fields can be redacted during JSON serialization. */
+  get supportsFusedSerialization(): boolean {
+    return this.#singlePath !== null
+  }
+
+  /** Redacts a value immutably. */
+  redact(value: unknown): unknown {
+    if (this.#singlePath !== null) {
+      return this.#singlePath.redact(value)
+    }
+
+    const root = this.#root!
+
+    if (root.children.size === 0 && root.wildcard === null) {
+      return value
+    }
+
+    return redactBranch(value, root, this.#policy, []).value
+  }
+
+  /** Serializes one top-level field through the fused single-path strategy. */
+  serializeField(
+    key: string,
+    value: unknown,
+    options: SafeStringifyOptions
+  ): string | undefined | typeof REDACT_NOT_APPLICABLE {
+    return this.#singlePath === null ? REDACT_NOT_APPLICABLE : this.#singlePath.serializeField(key, value, options)
+  }
 }
+
+export { REDACT_NOT_APPLICABLE, Redactor }

@@ -1,26 +1,41 @@
 import type { RedactCensor } from '../types.js'
-import { assignOwnValue, hasOwn } from './own-property.js'
+import { isFunction, isObject } from '../validation.js'
+import { cloneContainer } from './clone-container.js'
+import { assignOwnValue } from './own-property.js'
 import { quoteString } from './quote-string.js'
 import type { PathSegment } from './redact-path.js'
 import { REDACT_STRINGIFY_FALLBACK, safeStringifyRedacted, type RedactedStringifyConfig } from './redacted-stringify.js'
 import { safeStringify, type SafeStringifyOptions } from './safe-stringify.js'
 
 /** Signals that a field does not belong to the single-path fused serializer. */
-export const REDACT_NOT_APPLICABLE = Symbol('redact-not-applicable')
-
+const REDACT_NOT_APPLICABLE = Symbol('redact-not-applicable')
 const REMOVE = Symbol('remove-redacted-value')
 const UNCHANGED = Symbol('unchanged-redacted-value')
 
 type RedactValue = unknown | typeof REMOVE | typeof UNCHANGED
 
-export interface SinglePathRedactorOptions {
+interface SinglePathRedactorOptions {
   censor: string | RedactCensor
   remove: boolean
   segments: readonly PathSegment[]
 }
 
+function* iterableKeys(value: Record<string, unknown>): Iterable<string> {
+  if (!Array.isArray(value)) {
+    yield* Object.keys(value)
+
+    return
+  }
+
+  for (let index = 0; index < value.length; index += 1) {
+    if (Object.hasOwn(value, index)) {
+      yield String(index)
+    }
+  }
+}
+
 /** Owns immutable redaction and fused serialization for one configured path. */
-export class SinglePathRedactor {
+class SinglePathRedactor {
   readonly #config: RedactedStringifyConfig
 
   constructor(options: SinglePathRedactorOptions) {
@@ -32,7 +47,7 @@ export class SinglePathRedactor {
 
   /** Redacts a value without mutating the caller-owned object graph. */
   redact(value: unknown): unknown {
-    const redacted = this.#redactAt(value, 0, typeof this.#config.censor === 'function' ? [] : null)
+    const redacted = this.#redactAt(value, 0, isFunction(this.#config.censor) ? [] : null)
 
     return redacted === UNCHANGED || redacted === REMOVE ? value : redacted
   }
@@ -54,7 +69,7 @@ export class SinglePathRedactor {
       options,
       this.#config,
       1,
-      typeof this.#config.censor === 'function' && !this.#config.remove ? [key] : null
+      isFunction(this.#config.censor) && !this.#config.remove ? [key] : null
     )
 
     if (serialized !== REDACT_STRINGIFY_FALLBACK) {
@@ -63,7 +78,7 @@ export class SinglePathRedactor {
 
     const redacted = this.redact({ [key]: value }) as Record<string, unknown>
 
-    return hasOwn(redacted, key) ? safeStringify(redacted[key], options) : undefined
+    return Object.hasOwn(redacted, key) ? safeStringify(redacted[key], options) : undefined
   }
 
   #redactAt(value: unknown, segmentIndex: number, path: string[] | null): RedactValue {
@@ -72,10 +87,10 @@ export class SinglePathRedactor {
         return REMOVE
       }
 
-      return typeof this.#config.censor === 'function' ? this.#config.censor(value, [...path!]) : this.#config.censor
+      return isFunction(this.#config.censor) ? this.#config.censor(value, [...path!]) : this.#config.censor
     }
 
-    if (value === null || typeof value !== 'object') {
+    if (!isObject(value)) {
       return UNCHANGED
     }
 
@@ -87,7 +102,7 @@ export class SinglePathRedactor {
   }
 
   #redactExact(value: Record<string, unknown>, key: string, segmentIndex: number, path: string[] | null): RedactValue {
-    if (!hasOwn(value, key)) {
+    if (!Object.hasOwn(value, key)) {
       return UNCHANGED
     }
 
@@ -143,20 +158,5 @@ export class SinglePathRedactor {
   }
 }
 
-function* iterableKeys(value: Record<string, unknown>): Iterable<string> {
-  if (!Array.isArray(value)) {
-    yield* Object.keys(value)
-
-    return
-  }
-
-  for (let index = 0; index < value.length; index += 1) {
-    if (hasOwn(value, index)) {
-      yield String(index)
-    }
-  }
-}
-
-function cloneContainer(value: Record<string, unknown>): Record<string, unknown> | unknown[] {
-  return Array.isArray(value) ? [...value] : { ...value }
-}
+export { REDACT_NOT_APPLICABLE, SinglePathRedactor }
+export type { SinglePathRedactorOptions }

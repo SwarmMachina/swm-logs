@@ -1,4 +1,4 @@
-export class MemoryDestination {
+class MemoryDestination {
   readonly chunks: string[] = []
 
   write(chunk: string): boolean {
@@ -19,3 +19,5 @@ export class MemoryDestination {
       .map((line) => JSON.parse(line))
   }
 }
+
+export { MemoryDestination }

@@ -1,13 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import Logger, { type LoggerOptions } from '../../dist/index.js'
+import Logger from '../../dist/index.js'
+import { invalidLoggerOptions } from '../helpers/invalid-logger-options.ts'
 import { MemoryDestination } from '../helpers/memory-destination.ts'
-
-/** Crosses the type boundary intentionally to exercise runtime validation. */
-function invalidOptions(options: unknown): LoggerOptions {
-  return options as LoggerOptions
-}
 
 /** Logs one deterministic record and parses it. */
 function recordFor(fields: Record<string | symbol, unknown>) {
@@ -252,6 +248,6 @@ test('serializer failures are contained and invalid limits fail at construction'
   assert.throws(() => new Logger({ depthLimit: 0 }), /depthLimit/)
   assert.throws(() => new Logger({ edgeLimit: 1.5 }), /edgeLimit/)
   assert.throws(() => new Logger({ serializers: { msg: () => 'reserved' } }), /reserved/)
-  assert.throws(() => new Logger(invalidOptions({ serializers: [] })), /object of functions/)
-  assert.throws(() => new Logger(invalidOptions({ serializers: { value: true } })), /must be a function/)
+  assert.throws(() => new Logger(invalidLoggerOptions({ serializers: [] })), /object of functions/)
+  assert.throws(() => new Logger(invalidLoggerOptions({ serializers: { value: true } })), /must be a function/)
 })

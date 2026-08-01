@@ -4,6 +4,7 @@ import { measureScenario } from '@swarmmachina/benchkit/measurement'
 import { parseArgs } from '@swarmmachina/benchkit/orchestration'
 import { sampleV8HeapAllocations } from '@swarmmachina/benchkit/profiling'
 
+import { positiveInteger, requiredValue } from '../cli-values.js'
 import type { ImplementationName, WorkerResult } from '../types.js'
 
 interface ColdArgs {
@@ -17,13 +18,13 @@ const args = parseArgs(
   { allocationSamplingIntervalBytes: 32_768, implementation: 'swm' as 'swm' | 'pino', result: '' },
   {
     '--allocation-sampling-interval': (out, value) => {
-      out.allocationSamplingIntervalBytes = Number(value)
+      out.allocationSamplingIntervalBytes = positiveInteger(value, 'allocation sampling interval')
     },
     '--implementation': (out, value) => {
       out.implementation = value as 'swm' | 'pino'
     },
     '--result': (out, value) => {
-      out.result = value ?? ''
+      out.result = requiredValue(value, 'result')
     }
   },
   { offset: 2, strict: true }
@@ -39,7 +40,7 @@ const sampled = await sampleV8HeapAllocations(
         const startedAt = performance.now()
 
         if (args.implementation === 'swm') {
-          await import('@swarmmachina/swm-log')
+          await import('@swarmmachina/swm-logs')
         } else {
           await import('pino')
         }

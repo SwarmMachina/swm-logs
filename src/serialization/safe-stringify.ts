@@ -1,9 +1,10 @@
 import { DEFAULT_DEPTH_LIMIT, DEFAULT_EDGE_LIMIT } from '../constants.js'
+import { isFunction, isObject } from '../validation.js'
 import { assignOwnValue } from './own-property.js'
 import { quoteString } from './quote-string.js'
 
 /** Bounds applied while converting nested values into JSON-safe values. */
-export interface SafeStringifyOptions {
+interface SafeStringifyOptions {
   depthLimit?: number
   edgeLimit?: number
 }
@@ -17,7 +18,7 @@ const OMIT = Symbol('omit-json-value')
  * `[Circular]`, and containers beyond configured limits become finite marker
  * values. Repeated, non-cyclic references are serialized independently.
  */
-export function safeStringify(value: unknown, options: SafeStringifyOptions = {}): string | undefined {
+function safeStringify(value: unknown, options: SafeStringifyOptions = {}): string | undefined {
   return stringifyJsonValue(
     value,
     '',
@@ -29,7 +30,7 @@ export function safeStringify(value: unknown, options: SafeStringifyOptions = {}
 }
 
 /** Serializes one JSON-compatible branch with bounded depth and edges. */
-export function stringifyJsonValue(
+function stringifyJsonValue(
   value: unknown,
   key: string,
   depth: number,
@@ -67,7 +68,7 @@ function stringifyObject(
 ): string | undefined {
   const toJSON = (value as { toJSON?: (key: string) => unknown }).toJSON
 
-  if (typeof toJSON === 'function') {
+  if (isFunction(toJSON)) {
     const replacement = toJSON.call(value, key)
 
     if (replacement !== value) {
@@ -170,12 +171,12 @@ function stringifyRecord(
  * Enumerable custom properties use the same JSON safety rules as ordinary
  * fields. Error causes are retained as nested records up to `maxCauseDepth`.
  */
-export function safeStringifyError(error: Error, maxCauseDepth: number, options: SafeStringifyOptions = {}): string {
+function safeStringifyError(error: Error, maxCauseDepth: number, options: SafeStringifyOptions = {}): string {
   return JSON.stringify(normalizeError(error, maxCauseDepth, options))
 }
 
 /** Converts an Error and its cause chain into one bounded JSON-safe value. */
-export function normalizeError(
+function normalizeError(
   error: Error,
   maxCauseDepth: number,
   options: SafeStringifyOptions = {}
@@ -287,13 +288,13 @@ function normalizeJsonValue(
     return String(value)
   }
 
-  if (value === null || typeof value !== 'object') {
-    return value === undefined || typeof value === 'function' || typeof value === 'symbol' ? OMIT : value
+  if (!isObject(value)) {
+    return value === undefined || isFunction(value) || typeof value === 'symbol' ? OMIT : value
   }
 
   const toJSON = (value as { toJSON?: (key: string) => unknown }).toJSON
 
-  if (typeof toJSON === 'function') {
+  if (isFunction(toJSON)) {
     const replacement = toJSON.call(value, key)
 
     if (replacement !== value) {
@@ -358,3 +359,6 @@ function normalizeJsonValue(
     ancestors.pop()
   }
 }
+
+export { normalizeError, safeStringify, safeStringifyError, stringifyJsonValue }
+export type { SafeStringifyOptions }

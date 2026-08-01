@@ -1,7 +1,10 @@
 name: CI
 
 on:
+  pull_request:
   push:
+    branches:
+      - master
     tags:
       - 'v*'
   workflow_dispatch:
@@ -21,19 +24,17 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.15.1
       - name: Verify workflow commit belongs to master
+        if: startsWith(github.ref, 'refs/tags/v')
         run: git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/master
       - name: Setup release policy runtime
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/setup-node@v6
         with:
           node-version: '22'
       - name: Verify release tag matches package version
         if: startsWith(github.ref, 'refs/tags/v')
-        run: pnpm release:verify-tag "$GITHUB_REF_NAME"
+        run: node scripts/verify-release.js "$GITHUB_REF_NAME"
 
   test:
     runs-on: ubuntu-latest
@@ -137,6 +138,6 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
       - name: Publish
-        run: pnpm publish --provenance --no-git-checks
+        run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

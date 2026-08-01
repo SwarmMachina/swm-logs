@@ -1,7 +1,8 @@
 import { rmSync } from 'node:fs'
 import { relative, resolve } from 'node:path'
 
-const root = resolve(import.meta.dirname, '..')
+import { root } from './project-root.js'
+
 const target = resolve(root, 'dist')
 
 if (relative(root, target) !== 'dist') {

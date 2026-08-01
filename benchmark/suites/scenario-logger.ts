@@ -1,19 +1,28 @@
 import { writeSync } from 'node:fs'
 import pino from 'pino'
 
-import Logger from '@swarmmachina/swm-log'
+import Logger from '@swarmmachina/swm-logs'
 import type { ImplementationName, ScenarioName } from '../types.js'
 import { AcceptTransport } from './accept-transport.js'
 import { FdTransport } from './fd-transport.js'
 
-export interface BenchLogger {
+interface BenchLogger {
   child?(bindings: Record<string, unknown>): BenchLogger
   info(...args: unknown[]): void
   error(...args: unknown[]): void
 }
 
+function writeConsoleJson(fd: number, values: unknown[]): void {
+  const [first, second] = values
+  const fields = first !== null && typeof first === 'object' && !(first instanceof Error) ? first : undefined
+  const message = fields === undefined ? first : second
+  const line = JSON.stringify({ level: 30, time: Date.now(), msg: String(message ?? ''), ...(fields ?? {}) })
+
+  writeSync(fd, `${line}\n`)
+}
+
 /** Owns one benchmark logger implementation and its synchronous flush capability. */
-export class ScenarioLogger {
+class ScenarioLogger {
   readonly #flush: () => void
   readonly logger: BenchLogger
 
@@ -92,11 +101,5 @@ export class ScenarioLogger {
   }
 }
 
-function writeConsoleJson(fd: number, values: unknown[]): void {
-  const [first, second] = values
-  const fields = first !== null && typeof first === 'object' && !(first instanceof Error) ? first : undefined
-  const message = fields === undefined ? first : second
-  const line = JSON.stringify({ level: 30, time: Date.now(), msg: String(message ?? ''), ...(fields ?? {}) })
-
-  writeSync(fd, `${line}\n`)
-}
+export { ScenarioLogger }
+export type { BenchLogger }

@@ -6,6 +6,7 @@ import { BoundedLatencyRecorder, measureScenario } from '@swarmmachina/benchkit/
 import { parseArgs } from '@swarmmachina/benchkit/orchestration'
 import { sampleV8HeapAllocations } from '@swarmmachina/benchkit/profiling'
 
+import { nonNegativeInteger, positiveInteger, requiredValue } from '../cli-values.js'
 import type { ImplementationName, ScenarioName, WorkerResult } from '../types.js'
 import { ScenarioLogger, type BenchLogger } from './scenario-logger.js'
 
@@ -88,10 +89,10 @@ function parseWorkerArgs(argv: string[]): WorkerArgs {
         out.operations = positiveInteger(value, 'operations')
       },
       '--output': (out, value) => {
-        out.output = required(value, 'output')
+        out.output = requiredValue(value, 'output')
       },
       '--result': (out, value) => {
-        out.result = required(value, 'result')
+        out.result = requiredValue(value, 'result')
       },
       '--scenario': (out, value) => {
         out.scenario = value as ScenarioName
@@ -164,32 +165,4 @@ function runOperations(operation: (index: number) => void, operations: number): 
   }
 
   return latency
-}
-
-function required(value: string | undefined, label: string): string {
-  if (value === undefined || value.length === 0) {
-    throw new TypeError(`${label} is required`)
-  }
-
-  return value
-}
-
-function positiveInteger(value: string | undefined, label: string): number {
-  const parsed = Number(value)
-
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new TypeError(`${label} must be a positive integer`)
-  }
-
-  return parsed
-}
-
-function nonNegativeInteger(value: string | undefined, label: string): number {
-  const parsed = Number(value)
-
-  if (!Number.isSafeInteger(parsed) || parsed < 0) {
-    throw new TypeError(`${label} must be a non-negative integer`)
-  }
-
-  return parsed
 }

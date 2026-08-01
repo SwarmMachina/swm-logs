@@ -2,7 +2,8 @@ import { execFileSync } from 'node:child_process'
 import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { makeTempDir, pack, root } from './package-test-helpers.js'
+import { makeTempDir, pack } from './package-test-helpers.js'
+import { root } from './project-root.js'
 
 const temporaryDirectory = makeTempDir('swm-log-types-')
 
@@ -21,7 +22,7 @@ try {
       {
         private: true,
         type: 'module',
-        dependencies: { '@swarmmachina/swm-log': `file:${packed.path}` }
+        dependencies: { '@swarmmachina/swm-logs': `file:${packed.path}` }
       },
       null,
       2

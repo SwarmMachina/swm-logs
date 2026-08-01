@@ -1,4 +1,4 @@
-# @swarmmachina/swm-log
+# @swarmmachina/swm-logs
 
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 [![Node.js Version](https://img.shields.io/badge/node-22.x%20%7C%2024.x-brightgreen)](https://nodejs.org/)
@@ -25,7 +25,7 @@ A zero-runtime-dependency structured JSON logger for Node.js. It emits pino-comp
 ## Installation
 
 ```bash
-pnpm add @swarmmachina/swm-log
+pnpm add @swarmmachina/swm-logs
 ```
 
 ### Runtime requirements
@@ -39,7 +39,7 @@ pnpm add @swarmmachina/swm-log
 <!-- example:test quick-start -->
 
 ```js
-import Logger from '@swarmmachina/swm-log'
+import Logger from '@swarmmachina/swm-logs'
 
 const logger = new Logger({ bindings: { service: 'gateway' } })
 
@@ -62,7 +62,7 @@ A connection/request hook should create one child and reuse it for that lifecycl
 <!-- example:test child-hook -->
 
 ```js
-import Logger from '@swarmmachina/swm-log'
+import Logger from '@swarmmachina/swm-logs'
 
 const rootLogger = new Logger({ bindings: { service: 'realtime-api' } })
 
@@ -106,7 +106,7 @@ Configure a threshold with `level`, change it through `logger.level`, and check 
 Custom levels use the explicit `logger.log(name, ...)` method. The logger does not install per-instance methods or allocate closures for them.
 
 ```ts
-import Logger from '@swarmmachina/swm-log'
+import Logger from '@swarmmachina/swm-logs'
 
 const customLevels = { notice: 35 } as const
 const logger = new Logger({ customLevels, level: 'trace' })
@@ -131,7 +131,7 @@ Top-level serializers run only for matching keys. Bindings are serialized once d
 <!-- example:test serializers -->
 
 ```js
-import Logger from '@swarmmachina/swm-log'
+import Logger from '@swarmmachina/swm-logs'
 
 const logger = new Logger({
   serializers: {
@@ -147,7 +147,7 @@ A single redact path uses a dedicated redactor and is fused with bounded JSON se
 <!-- example:test redact -->
 
 ```js
-import Logger from '@swarmmachina/swm-log'
+import Logger from '@swarmmachina/swm-logs'
 
 const logger = new Logger({ redact: ['req.headers.authorization', 'user.password'] })
 
@@ -180,7 +180,7 @@ When `hooks` and `formatter` are both absent, the logger retains the direct manu
 <!-- example:test extensions -->
 
 ```js
-import Logger from '@swarmmachina/swm-log'
+import Logger from '@swarmmachina/swm-logs'
 
 class AsyncTransport {
   #pending = Promise.resolve()
@@ -238,7 +238,7 @@ stdout backed by a regular file is synchronous on supported Node.js platforms; t
 <!-- example:test buffered -->
 
 ```js
-import Logger from '@swarmmachina/swm-log'
+import Logger from '@swarmmachina/swm-logs'
 
 const logger = new Logger({
   buffering: { maxBytes: 64 * 1024, flushInterval: 1000, flushLevel: 'warn' }
@@ -263,7 +263,7 @@ Call `await logger.close()` during graceful shutdown; synchronous writers return
 <!-- example:test console-bridge -->
 
 ```js
-import Logger, { ConsoleBridge } from '@swarmmachina/swm-log'
+import Logger, { ConsoleBridge } from '@swarmmachina/swm-logs'
 
 const logger = new Logger()
 const bridge = new ConsoleBridge(logger).install()

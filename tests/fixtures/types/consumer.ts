@@ -8,7 +8,7 @@ import Logger, {
   type LogDestination,
   type LogRecord,
   type LogTransport
-} from '@swarmmachina/swm-log'
+} from '@swarmmachina/swm-logs'
 
 const chunks: string[] = []
 const destination: LogDestination = {

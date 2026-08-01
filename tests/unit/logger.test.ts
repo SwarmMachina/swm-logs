@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import Logger, { LEVELS, type LoggerOptions } from '../../dist/index.js'
+import { invalidLoggerOptions } from '../helpers/invalid-logger-options.ts'
 import { MemoryDestination } from '../helpers/memory-destination.ts'
 
 const NOW = 1_710_000_000_000
@@ -12,11 +13,6 @@ function setup(options: LoggerOptions = {}): { destination: MemoryDestination; l
   const logger = new Logger({ destination, time: () => NOW, ...options })
 
   return { destination, logger }
-}
-
-/** Crosses the type boundary intentionally to exercise runtime validation. */
-function invalidOptions(options: unknown): LoggerOptions {
-  return options as LoggerOptions
 }
 
 test('writes the specified pino-compatible envelope and flat fields', () => {
@@ -132,21 +128,21 @@ test('a failing destination never escapes a log call', () => {
 test('configuration errors are explicit TypeErrors', () => {
   assert.throws(() => new Logger({ level: 'unknown' }), TypeError)
   assert.throws(() => new Logger({ customLevels: { info: 35 } }), /collides with a built-in level/)
-  assert.throws(() => new Logger(invalidOptions({ customLevels: [] })), /customLevels must be an object/)
+  assert.throws(() => new Logger(invalidLoggerOptions({ customLevels: [] })), /customLevels must be an object/)
   assert.throws(
-    () => new Logger(invalidOptions({ customLevels: { notice: Number.MAX_SAFE_INTEGER + 1 } })),
+    () => new Logger(invalidLoggerOptions({ customLevels: { notice: Number.MAX_SAFE_INTEGER + 1 } })),
     /non-negative safe integer/
   )
   assert.throws(() => new Logger({ buffering: { maxBytes: 0 } }), /positive integer/)
-  assert.throws(() => new Logger(invalidOptions({ time: null })), /time must be a function/)
-  assert.throws(() => new Logger(invalidOptions({ console: 'no' })), /console must be a boolean/)
+  assert.throws(() => new Logger(invalidLoggerOptions({ time: null })), /time must be a function/)
+  assert.throws(() => new Logger(invalidLoggerOptions({ console: 'no' })), /console must be a boolean/)
   assert.throws(() => new Logger({ console: false }), /requires at least one transport/)
   assert.throws(
     () => new Logger({ console: false, destination: 'stderr', transports: [{ write() {} }] }),
     /destination/
   )
   assert.throws(() => new Logger({ console: false, buffering: true, transports: [{ write() {} }] }), /buffering/)
-  assert.throws(() => new Logger(invalidOptions({ destination: {} })), /destination/)
-  assert.throws(() => new Logger(invalidOptions({ destination: Number.MAX_SAFE_INTEGER + 1 })), /destination/)
-  assert.throws(() => new Logger(invalidOptions({ bindings: [] })), /must be an object/)
+  assert.throws(() => new Logger(invalidLoggerOptions({ destination: {} })), /destination/)
+  assert.throws(() => new Logger(invalidLoggerOptions({ destination: Number.MAX_SAFE_INTEGER + 1 })), /destination/)
+  assert.throws(() => new Logger(invalidLoggerOptions({ bindings: [] })), /must be an object/)
 })

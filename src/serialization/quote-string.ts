@@ -3,13 +3,17 @@ const HEX = '0123456789abcdef'
 // eslint-disable-next-line no-control-regex
 const NEEDS_ESCAPE = /["\\\u0000-\u001f\u2028\u2029\ud800-\udfff]/
 
+function unicodeEscape(code: number): string {
+  return `\\u${HEX[(code >>> 12) & 0xf]}${HEX[(code >>> 8) & 0xf]}${HEX[(code >>> 4) & 0xf]}${HEX[code & 0xf]}`
+}
+
 /**
  * Returns a well-formed JSON string without calling `JSON.stringify()`.
  *
  * This is used by the flat-fields hot path and includes lone-surrogate
  * handling equivalent to well-formed `JSON.stringify()`.
  */
-export function quoteString(value: string): string {
+function quoteString(value: string): string {
   if (!NEEDS_ESCAPE.test(value)) {
     return `"${value}"`
   }
@@ -60,6 +64,4 @@ export function quoteString(value: string): string {
   return output + value.slice(chunkStart) + '"'
 }
 
-function unicodeEscape(code: number): string {
-  return `\\u${HEX[(code >>> 12) & 0xf]}${HEX[(code >>> 8) & 0xf]}${HEX[(code >>> 4) & 0xf]}${HEX[code & 0xf]}`
-}
+export { quoteString }

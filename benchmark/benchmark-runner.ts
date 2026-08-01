@@ -16,7 +16,7 @@ import type {
 } from './types.js'
 
 /** Options for one isolated multi-process benchmark suite. */
-export interface BenchmarkRunnerOptions {
+interface BenchmarkRunnerOptions {
   scenarios: ScenarioName[]
   implementations?: ImplementationName[]
   runs: number
@@ -48,8 +48,63 @@ const DEFAULT_IMPLEMENTATIONS: Readonly<Record<ScenarioName, ImplementationName[
   b7: ['swm', 'pino-sync']
 })
 
+function balancedOrder(implementations: ImplementationName[], runs: number): ImplementationName[][] {
+  if (implementations.length < 2) {
+    return Array.from({ length: runs }, () => [...implementations])
+  }
+
+  const [candidate, reference, ...remaining] = implementations
+  const schedule = balancedSchedule({
+    candidate: candidate!,
+    reference: reference!,
+    runs,
+    strictBalance: false
+  })
+
+  return schedule.map(({ order }) => [...order, ...remaining])
+}
+
+function nullableMedian(values: Array<number | null>): number {
+  const finite = values.filter((value): value is number => Number.isFinite(value))
+
+  return finite.length === 0 ? 0 : median(finite)
+}
+
+function aggregateMedians(rows: BenchmarkRunRow[]): BenchmarkMedianRow[] {
+  const groups = new Map<string, BenchmarkRunRow[]>()
+
+  for (const row of rows) {
+    const key = `${row.scenario}/${row.implementation}`
+
+    groups.set(key, [...(groups.get(key) ?? []), row])
+  }
+
+  return [...groups.values()].map((group) => {
+    const first = group[0]!
+
+    return {
+      allocationBytesPerOperation: median(group.map((row) => row.allocationBytesPerOperation)),
+      durationMs: median(group.map((row) => row.measurement.durationMs)),
+      eluPct: median(group.map((row) => row.measurement.eluPct)),
+      implementation: first.implementation,
+      operations: first.measurement.operations,
+      operationsPerSecond: median(group.map((row) => row.measurement.operationsPerSecond)),
+      p95Ms: nullableMedian(group.map((row) => row.measurement.latencyMs.p95)),
+      p99Ms: nullableMedian(group.map((row) => row.measurement.latencyMs.p99)),
+      rssPeakMiB: nullableMedian(
+        group.map((row) => {
+          const peak = row.measurement.processMemory?.rss.peakBytes
+
+          return peak === undefined ? null : peak / (1024 * 1024)
+        })
+      ),
+      scenario: first.scenario
+    }
+  })
+}
+
 /** Owns temporary files and sequential child-process benchmark orchestration. */
-export class BenchmarkRunner {
+class BenchmarkRunner {
   readonly #options: BenchmarkRunnerOptions
   #sequence = 0
   #temporaryDirectory: string | null = null
@@ -183,57 +238,5 @@ export class BenchmarkRunner {
   }
 }
 
-function balancedOrder(implementations: ImplementationName[], runs: number): ImplementationName[][] {
-  if (implementations.length < 2) {
-    return Array.from({ length: runs }, () => [...implementations])
-  }
-
-  const [candidate, reference, ...remaining] = implementations
-  const schedule = balancedSchedule({
-    candidate: candidate!,
-    reference: reference!,
-    runs,
-    strictBalance: false
-  })
-
-  return schedule.map(({ order }) => [...order, ...remaining])
-}
-
-function aggregateMedians(rows: BenchmarkRunRow[]): BenchmarkMedianRow[] {
-  const groups = new Map<string, BenchmarkRunRow[]>()
-
-  for (const row of rows) {
-    const key = `${row.scenario}/${row.implementation}`
-
-    groups.set(key, [...(groups.get(key) ?? []), row])
-  }
-
-  return [...groups.values()].map((group) => {
-    const first = group[0]!
-
-    return {
-      allocationBytesPerOperation: median(group.map((row) => row.allocationBytesPerOperation)),
-      durationMs: median(group.map((row) => row.measurement.durationMs)),
-      eluPct: median(group.map((row) => row.measurement.eluPct)),
-      implementation: first.implementation,
-      operations: first.measurement.operations,
-      operationsPerSecond: median(group.map((row) => row.measurement.operationsPerSecond)),
-      p95Ms: nullableMedian(group.map((row) => row.measurement.latencyMs.p95)),
-      p99Ms: nullableMedian(group.map((row) => row.measurement.latencyMs.p99)),
-      rssPeakMiB: nullableMedian(
-        group.map((row) => {
-          const peak = row.measurement.processMemory?.rss.peakBytes
-
-          return peak === undefined ? null : peak / (1024 * 1024)
-        })
-      ),
-      scenario: first.scenario
-    }
-  })
-}
-
-function nullableMedian(values: Array<number | null>): number {
-  const finite = values.filter((value): value is number => Number.isFinite(value))
-
-  return finite.length === 0 ? 0 : median(finite)
-}
+export { BenchmarkRunner }
+export type { BenchmarkRunnerOptions }

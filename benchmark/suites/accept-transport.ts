@@ -1,7 +1,7 @@
-import type { LogTransport } from '@swarmmachina/swm-log'
+import type { LogTransport } from '@swarmmachina/swm-logs'
 
 /** Minimal non-blocking acceptor used to isolate fire-and-forget fan-out overhead. */
-export class AcceptTransport implements LogTransport {
+class AcceptTransport implements LogTransport {
   #checksum = 0
 
   write(line: string, level: number): void {
@@ -14,3 +14,5 @@ export class AcceptTransport implements LogTransport {
     }
   }
 }
+
+export { AcceptTransport }

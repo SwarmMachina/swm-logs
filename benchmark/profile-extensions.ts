@@ -1,7 +1,7 @@
 import { appendStepSummary, mdTable } from '@swarmmachina/benchkit/reporting'
-import { pairedComparison } from '@swarmmachina/benchkit/statistics'
 
 import { runBenchmark } from './bench.js'
+import { compareBenchmarkRuns } from './paired-benchmark-comparison.js'
 import type { BenchmarkMedianRow, BenchmarkRunRow, ImplementationName } from './types.js'
 
 const runs = 4
@@ -96,38 +96,15 @@ function compareRows(
   p99DeltaPct: number
   throughputDeltaPct: number
 } {
-  const pairs = pairRows(
+  const comparison = compareBenchmarkRuns(
     runs.filter((row) => row.implementation === candidate.implementation),
     runs.filter((row) => row.implementation === reference.implementation)
-  )
-  const throughput = pairedComparison(
-    pairs.map(([left, right]) => ({
-      candidate: left.measurement.operationsPerSecond,
-      reference: right.measurement.operationsPerSecond
-    })),
-    { direction: 'higher' }
-  )
-  const p99 = pairedComparison(
-    pairs.map(([left, right]) => ({
-      candidate: left.measurement.latencyMs.p99 ?? 0,
-      reference: right.measurement.latencyMs.p99 ?? 0
-    })),
-    { direction: 'lower' }
   )
 
   return {
     candidate,
     name,
-    p99DeltaPct: p99.medianPairedDeltaPct,
-    throughputDeltaPct: throughput.medianPairedDeltaPct
+    p99DeltaPct: comparison.p99DeltaPct,
+    throughputDeltaPct: comparison.throughputDeltaPct
   }
-}
-
-function pairRows(
-  candidate: BenchmarkRunRow[],
-  reference: BenchmarkRunRow[]
-): Array<[BenchmarkRunRow, BenchmarkRunRow]> {
-  const references = new Map(reference.map((row) => [row.run, row]))
-
-  return candidate.map((row) => [row, references.get(row.run)!])
 }

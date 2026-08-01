@@ -1,8 +1,8 @@
-import { pairedComparison } from '@swarmmachina/benchkit/statistics'
 import { appendStepSummary, mdTable } from '@swarmmachina/benchkit/reporting'
 
 import { runBenchmark } from './bench.js'
-import type { BenchmarkRunRow, ScenarioName } from './types.js'
+import { compareBenchmarkRuns } from './paired-benchmark-comparison.js'
+import type { ScenarioName } from './types.js'
 
 const runs = 4
 const result = await runBenchmark({
@@ -17,33 +17,19 @@ const result = await runBenchmark({
 const comparisons = (['b1', 'b2', 'b3', 'b4', 'b5', 'b6'] as ScenarioName[]).map((scenario) => {
   const candidate = scenario === 'b5' ? 'swm-buffered' : 'swm'
   const reference = scenario === 'b5' ? 'pino-async' : scenario === 'b6' ? 'pino' : 'pino-sync'
-  const pairs = pairRows(
+  const comparison = compareBenchmarkRuns(
     result.runs.filter((row) => row.scenario === scenario && row.implementation === candidate),
     result.runs.filter((row) => row.scenario === scenario && row.implementation === reference)
-  )
-  const throughput = pairedComparison(
-    pairs.map(([left, right]) => ({
-      candidate: left.measurement.operationsPerSecond,
-      reference: right.measurement.operationsPerSecond
-    })),
-    { direction: 'higher' }
-  )
-  const p99 = pairedComparison(
-    pairs.map(([left, right]) => ({
-      candidate: left.measurement.latencyMs.p99 ?? 0,
-      reference: right.measurement.latencyMs.p99 ?? 0
-    })),
-    { direction: 'lower' }
   )
 
   return {
     candidate,
-    p99DeltaPct: p99.medianPairedDeltaPct,
-    p99Wins: p99.winningPairs,
+    p99DeltaPct: comparison.p99DeltaPct,
+    p99Wins: comparison.p99Wins,
     reference,
     scenario,
-    throughputDeltaPct: throughput.medianPairedDeltaPct,
-    throughputWins: throughput.winningPairs
+    throughputDeltaPct: comparison.throughputDeltaPct,
+    throughputWins: comparison.throughputWins
   }
 })
 const markdown = [
@@ -67,12 +53,3 @@ const markdown = [
 ].join('\n')
 
 await appendStepSummary(markdown)
-
-function pairRows(
-  candidate: BenchmarkRunRow[],
-  reference: BenchmarkRunRow[]
-): Array<[BenchmarkRunRow, BenchmarkRunRow]> {
-  const references = new Map(reference.map((row) => [row.run, row]))
-
-  return candidate.map((row) => [row, references.get(row.run)!])
-}
